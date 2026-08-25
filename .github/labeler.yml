@@ -1,0 +1,65 @@
+changed-files-labels-limit: "8"
+max-files-changed: "200"
+
+go:
+  - changed-files:
+      - any-glob-to-any-file: ["**/*.go", "go.mod", "go.sum", "go.version"]
+api:
+  - changed-files:
+      - any-glob-to-any-file: ["api/**", "contracts/**", "internal/httpapi/**", "internal/domain/**"]
+database:
+  - changed-files:
+      - any-glob-to-any-file: ["internal/store/postgres/**"]
+identity:
+  - changed-files:
+      - any-glob-to-any-file: ["internal/auth/**", "internal/agentca/**", "internal/store/postgres/authorization.go", "internal/store/postgres/memberships.go"]
+agents:
+  - changed-files:
+      - any-glob-to-any-file: ["internal/httpapi/agents.go", "internal/store/postgres/agents.go", "internal/store/postgres/executions.go"]
+artifacts:
+  - changed-files:
+      - any-glob-to-any-file: ["internal/httpapi/logs.go", "internal/store/postgres/logs.go", "internal/store/postgres/migrations/*logs.sql"]
+operations:
+  - changed-files:
+      - any-glob-to-any-file: ["docs/DEPLOYMENT.md", "docs/OPERATIONS.md", "etc/**", "compose.yaml"]
+documentation:
+  - head-branch: ["^docs?(?:/|$)"]
+  - changed-files:
+      - any-glob-to-any-file: ["**/*.md", "docs/**", "assets/**", "CITATION.cff"]
+tests:
+  - head-branch: ["^tests?(?:/|$)"]
+  - changed-files:
+      - any-glob-to-any-file: ["**/*_test.go", "contracts/**/conformance/**", "coverage.txt"]
+ci:
+  - changed-files:
+      - any-glob-to-any-file: [".github/workflows/**", ".github/dependabot.yml", ".github/labeler.yml", ".github/labels.yml"]
+github-actions:
+  - changed-files:
+      - any-glob-to-any-file: [".github/workflows/**"]
+dependencies:
+  - head-branch: ["^dependabot/", "^deps?(?:/|$)"]
+  - changed-files:
+      - any-glob-to-any-file: ["go.mod", "go.sum", "go.version", ".github/dependabot.yml", ".devcontainer/**"]
+containers:
+  - changed-files:
+      - any-glob-to-any-file: ["Dockerfile*", ".dockerignore", ".devcontainer/Dockerfile"]
+packaging:
+  - changed-files:
+      - any-glob-to-any-file: [".goreleaser.yml", "RELEASE.md", "etc/**", "LICENSE", "THIRD_PARTY_NOTICES.md"]
+security:
+  - changed-files:
+      - any-glob-to-any-file: ["SECURITY.md", "docs/SECURITY_MODEL.md", ".github/workflows/codeql.yml", ".github/workflows/scorecard.yml"]
+automation:
+  - changed-files:
+      - any-glob-to-any-file: ["Makefile", "devel/**", ".golangci.yml", ".editorconfig", ".gitattributes", "cspell.json"]
+dev-environment:
+  - changed-files:
+      - any-glob-to-any-file: [".devcontainer/**", ".editorconfig", "compose.yaml", ".env.example"]
+release:
+  - head-branch: ["^(?:release|prepare-release)(?:/|$)"]
+  - changed-files:
+      - any-glob-to-any-file: ["CHANGELOG.md", "RELEASE.md", ".goreleaser.yml", ".github/workflows/release.yml", "Dockerfile.goreleaser"]
+maintenance:
+  - head-branch: ["^(?:chore|maintenance)(?:/|$)"]
+  - changed-files:
+      - any-glob-to-any-file: [".github/**", "AGENTS.md", ".gitattributes", ".gitignore"]

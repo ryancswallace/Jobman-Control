@@ -1,0 +1,87 @@
+- name: bug
+  color: "d73a4a"
+  description: Something is broken or behaving incorrectly.
+- name: enhancement
+  color: "a2eeef"
+  description: A new feature or improvement request.
+- name: go
+  color: "00add8"
+  description: Go source, module metadata, or toolchain configuration.
+- name: api
+  color: "1d76db"
+  description: HTTP APIs, portable contracts, or compatibility surfaces.
+- name: database
+  color: "5319e7"
+  description: PostgreSQL schemas, migrations, queries, or transactions.
+- name: identity
+  color: "b60205"
+  description: OIDC, mTLS, enrollment, certificates, or namespace authorization.
+- name: agents
+  color: "006b75"
+  description: Agent protocol, assignments, actions, or execution metadata.
+- name: artifacts
+  color: "5319e7"
+  description: Log manifests, object stores, checksums, or path mapping.
+- name: operations
+  color: "0052cc"
+  description: Deployment, migration, backup, restore, health, or observability.
+- name: documentation
+  color: "0075ca"
+  description: Documentation, examples, community files, or release guidance.
+- name: tests
+  color: "c2e0c6"
+  description: Tests, fixtures, fuzzing, coverage, or test infrastructure.
+- name: ci
+  color: "0e8a16"
+  description: Continuous integration or repository check behavior.
+- name: github-actions
+  color: "0e8a16"
+  description: GitHub Actions workflow configuration.
+- name: dependencies
+  color: "0366d6"
+  description: Go modules, Actions, images, or development-tool dependencies.
+- name: containers
+  color: "0db7ed"
+  description: Runtime or development container behavior.
+- name: packaging
+  color: "fef2c0"
+  description: Archives, native packages, images, SBOMs, or installation.
+- name: security
+  color: "b60205"
+  description: Trust boundaries, vulnerability handling, or secret hygiene.
+- name: automation
+  color: "fbca04"
+  description: Build, formatting, generation, or repository automation.
+- name: dev-environment
+  color: "d4c5f9"
+  description: Devcontainer, editor, Compose, or local development setup.
+- name: release
+  color: "fef2c0"
+  description: Release preparation, signing, provenance, or publishing.
+- name: maintenance
+  color: "c5def5"
+  description: Repository maintenance that is not directly user-facing.
+- name: breaking-change
+  color: "b60205"
+  description: Public behavior, schema, or protocol change requiring migration.
+- name: good first issue
+  color: "7057ff"
+  description: Good for a first contribution.
+- name: help wanted
+  color: "008672"
+  description: Maintainer help is welcome.
+- name: question
+  color: "d876e3"
+  description: Question or clarification request.
+- name: needs-triage
+  color: "ededed"
+  description: Needs maintainer review and categorization.
+- name: duplicate
+  color: "cfd3d7"
+  description: This issue or pull request already exists.
+- name: invalid
+  color: "e4e669"
+  description: This does not look actionable as filed.
+- name: wontfix
+  color: "ffffff"
+  description: This will not be worked on.
