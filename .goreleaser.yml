@@ -1,0 +1,185 @@
+---
+version: 2
+
+project_name: jobman-control
+
+before:
+  hooks:
+    - go mod download
+    - go mod verify
+    - make contracts-check docs-check
+
+builds:
+  - id: jobman-control
+    main: .
+    binary: jobman-control
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -mod=readonly
+    ldflags:
+      - -s -w -buildid=
+      - -X github.com/ryancswallace/jobman-control/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/ryancswallace/jobman-control/internal/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/ryancswallace/jobman-control/internal/buildinfo.Date={{ .Date }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+    ignore:
+      - goos: darwin
+        goarch: "386"
+
+archives:
+  - id: jobman-control
+    ids:
+      - jobman-control
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+      {{- with .Arm }}v{{ . }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - CITATION.cff
+      - CODE_OF_CONDUCT.md
+      - CONTRIBUTING.md
+      - RELEASE.md
+      - SECURITY.md
+      - SUPPORT.md
+      - THIRD_PARTY_NOTICES.md
+      - api/openapi-v1alpha1.yaml
+      - docs/*.md
+      - etc/jobman-control/jobman-control.env.example
+      - etc/jobman-control/jobman-control.service
+
+nfpms:
+  - id: jobman-control
+    ids:
+      - jobman-control
+    package_name: jobman-control
+    vendor: Jobman Control contributors
+    homepage: https://github.com/ryancswallace/jobman-control
+    maintainer: Ryan Wallace <ryancswallace@gmail.com>
+    description: Shared PostgreSQL-backed control plane for Jobman.
+    license: MIT
+    section: utils
+    priority: optional
+    formats:
+      - apk
+      - deb
+      - rpm
+    contents:
+      - src: LICENSE
+        dst: /usr/share/licenses/jobman-control/LICENSE
+      - src: THIRD_PARTY_NOTICES.md
+        dst: /usr/share/licenses/jobman-control/THIRD_PARTY_NOTICES.md
+      - src: README.md
+        dst: /usr/share/doc/jobman-control/README.md
+      - src: docs/DEPLOYMENT.md
+        dst: /usr/share/doc/jobman-control/DEPLOYMENT.md
+      - src: docs/OPERATIONS.md
+        dst: /usr/share/doc/jobman-control/OPERATIONS.md
+      - src: api/openapi-v1alpha1.yaml
+        dst: /usr/share/doc/jobman-control/openapi-v1alpha1.yaml
+      - src: etc/jobman-control/jobman-control.env.example
+        dst: /etc/jobman-control/jobman-control.env.example
+        type: config|noreplace
+      - src: etc/jobman-control/jobman-control.service
+        dst: /usr/lib/systemd/system/jobman-control.service
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+docker_digest:
+  name_template: digests.txt
+
+sboms:
+  - id: archives
+    artifacts: archive
+  - id: packages
+    artifacts: package
+
+signs:
+  - id: checksums
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+
+dockers_v2:
+  - id: jobman-control
+    ids:
+      - jobman-control
+    dockerfile: Dockerfile.goreleaser
+    extra_files:
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+    images:
+      - ghcr.io/ryancswallace/jobman-control
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Tag }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    sbom: true
+    labels:
+      org.opencontainers.image.title: jobman-control
+      org.opencontainers.image.description: Shared control plane for Jobman
+      org.opencontainers.image.url: https://github.com/ryancswallace/jobman-control
+      org.opencontainers.image.source: https://github.com/ryancswallace/jobman-control
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: MIT
+
+docker_signs:
+  - id: containers
+    cmd: cosign
+    artifacts: all
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - --yes
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^chore(?:\([^)]*\))?:'
+      - '^ci(?:\([^)]*\))?:'
+      - '^docs(?:\([^)]*\))?:'
+      - '^test(?:\([^)]*\))?:'
+      - '^Merge '
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot.{{ .ShortCommit }}"
+
+release:
+  github:
+    owner: ryancswallace
+    name: jobman-control
+  draft: true
+  use_existing_draft: true
+  prerelease: auto
+  mode: keep-existing
+  replace_existing_artifacts: true
+  footer: |
+    **Install and verify:** see [RELEASE.md](https://github.com/ryancswallace/jobman-control/blob/main/RELEASE.md).
