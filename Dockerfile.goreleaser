@@ -1,0 +1,19 @@
+# GoReleaser supplies one pre-built jobman-control binary per TARGETPLATFORM.
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+
+RUN apk add --no-cache ca-certificates tini tzdata \
+    && addgroup -S -g 10001 jobman-control \
+    && adduser -S -D -u 10001 -G jobman-control -h /var/lib/jobman-control jobman-control \
+    && mkdir -p /etc/jobman-control /var/lib/jobman-control \
+    && chown -R jobman-control:jobman-control /var/lib/jobman-control
+
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/jobman-control /usr/local/bin/jobman-control
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/jobman-control/
+
+USER 10001:10001
+WORKDIR /var/lib/jobman-control
+EXPOSE 8080
+
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/sbin/tini", "--", "jobman-control"]
