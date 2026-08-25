@@ -1,0 +1,68 @@
+# Repository settings-as-code for the GitHub Settings app. Changes to this file
+# require the same review as production code and migrations.
+repository:
+  description: "Shared PostgreSQL-backed control plane for Jobman."
+  homepage: "https://github.com/ryancswallace/jobman-control"
+  topics: "agents, batch-jobs, control-plane, distributed-systems, go, jobman, oidc, postgresql, slurm"
+  has_issues: true
+  has_projects: false
+  has_wiki: false
+  has_discussions: false
+  default_branch: "main"
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: false
+  allow_auto_merge: true
+  allow_update_branch: true
+  squash_merge_commit_title: PR_TITLE
+  squash_merge_commit_message: PR_BODY
+  delete_branch_on_merge: true
+  enable_automated_security_fixes: true
+  enable_vulnerability_alerts: true
+
+branches:
+  - name: "main"
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: true
+        require_last_push_approval: true
+      required_status_checks:
+        strict: true
+        contexts:
+          - Analyze Go
+          - Dependency review
+          - Lint and contracts
+          - Unit and PostgreSQL integration tests
+          - Repository and release checks
+          - "Native race (macos-latest)"
+          - "Native race (windows-latest)"
+          - "Build (linux/amd64)"
+          - "Build (linux/arm64)"
+          - "Build (linux/386)"
+          - "Build (darwin/amd64)"
+          - "Build (darwin/arm64)"
+          - "Build (windows/amd64)"
+          - "Build (windows/arm64)"
+          - "Build (windows/386)"
+          - Fuzz FuzzDecodeJobRequest
+      enforce_admins: false
+      required_linear_history: true
+      allow_force_pushes: false
+      allow_deletions: false
+      required_conversation_resolution: true
+      restrictions: null
+
+environments:
+  - name: "main"
+    wait_timer: 0
+    reviewers:
+      - id: 20177051
+        type: "User"
+    deployment_branch_policy:
+      custom_branches:
+        - name: main
+          type: branch
+        - name: "v*.*.*"
+          type: tag

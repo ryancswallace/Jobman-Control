@@ -1,0 +1,1679 @@
+openapi: 3.1.0
+info:
+  title: Jobman Control API
+  version: 0.4.0-alpha
+  description: >-
+    Shared control API for namespace RBAC, registered target generations,
+    durable jobs, collections, dependency graphs, namespace quotas and audit
+    export, immutable target-generation rollover,
+    one-time agent enrollment, short-lived agent mTLS
+    credentials, capability/liveness observations, assignment acceptance,
+    ordered execution events, immutable artifact metadata, and durable
+    cancellation intent.
+servers:
+  - url: https://jobman-control.example.edu
+security:
+  - oidcBearer: []
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Process liveness.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Health"}
+  /readyz:
+    get:
+      operationId: getReadiness
+      security: []
+      responses:
+        "200":
+          description: PostgreSQL is reachable and exactly migrated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Health"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /metrics:
+    get:
+      operationId: getMetrics
+      security: []
+      description: Bounded-cardinality Prometheus metrics without resource names or content.
+      responses:
+        "200":
+          description: Prometheus text exposition.
+          content:
+            text/plain:
+              schema: {type: string}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/policy:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    get:
+      operationId: getNamespacePolicy
+      responses:
+        "200":
+          description: Current namespace admission and operational-retention policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NamespacePolicy"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+    put:
+      operationId: updateNamespacePolicy
+      description: Revision-checked complete policy replacement. Requires namespace_admin.
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema: {type: string, pattern: '^"revision-[1-9][0-9]*"$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/NamespacePolicyRequest"}
+      responses:
+        "200":
+          description: Updated policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NamespacePolicy"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "428": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/audit:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    get:
+      operationId: exportAudit
+      description: Export an ascending append-only audit page. Requires operator or namespace_admin.
+      parameters:
+        - name: afterId
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 1000, default: 200}
+      responses:
+        "200":
+          description: Stable audit export page.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuditEventList"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/memberships:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    put:
+      operationId: putMembership
+      description: Create or replace a role binding. Requires namespace_admin.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MembershipRequest"}
+      responses:
+        "200":
+          description: Current membership or an idempotent replay.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Membership"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/targets:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    post:
+      operationId: createTarget
+      description: Register generation 1 of a namespace target. Requires namespace_admin.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TargetRequest"}
+      responses:
+        "201":
+          description: Target created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Target"}
+        "200":
+          description: Idempotent replay.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Target"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+    get:
+      operationId: listTargets
+      responses:
+        "200":
+          description: Up to 1,000 name-ordered targets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiVersion, kind, items]
+                properties:
+                  apiVersion: {const: jobman.control/v1alpha1}
+                  kind: {const: TargetList}
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Target"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /v1/namespaces/{namespace}/targets/{target}:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {$ref: "#/components/parameters/TargetName"}
+    get:
+      operationId: getTarget
+      responses:
+        "200":
+          description: Target and current immutable generation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Target"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/targets/{target}/state:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {$ref: "#/components/parameters/TargetName"}
+    put:
+      operationId: updateTargetState
+      description: >-
+        Revision-checked operator transition. Draining stops new assignments
+        while preserving control of accepted executions.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+        - name: If-Match
+          in: header
+          required: true
+          schema: {type: string, pattern: '^"revision-[1-9][0-9]*"$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TargetStateChange"}
+      responses:
+        "200":
+          description: Updated target or identical replay.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Target"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/targets/{target}/generations:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {$ref: "#/components/parameters/TargetName"}
+    post:
+      operationId: createTargetGeneration
+      description: >-
+        Install a revision-checked immutable target generation. Existing jobs
+        and agents remain pinned to their original generation. Requires
+        namespace_admin.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+        - name: If-Match
+          in: header
+          required: true
+          schema: {type: string, pattern: '^"revision-[1-9][0-9]*"$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TargetGenerationRequest"}
+      responses:
+        "200":
+          description: Target with the new current generation, or an idempotent replay.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Target"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "428": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/targets/{target}/enrollment-tokens:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {$ref: "#/components/parameters/TargetName"}
+    post:
+      operationId: createAgentEnrollmentToken
+      description: >-
+        Issue a short-lived, single-use token pinned to target generation,
+        member, and expected OS user. Submitters may issue for themselves;
+        namespace_admin may issue for another member.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EnrollmentTokenRequest"}
+      responses:
+        "201":
+          description: New token; the clear token is returned while the token remains unused.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EnrollmentToken"}
+        "200":
+          description: Idempotent replay; token is omitted after it has been used.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EnrollmentToken"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    get:
+      operationId: listJobs
+      description: Return one stable newest-first page of authorized namespace jobs.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: phase
+          in: query
+          schema: {enum: [accepted, assigning, accepted_execution, running, terminal]}
+        - name: pageToken
+          in: query
+          schema: {type: string, minLength: 1, maxLength: 1024}
+      responses:
+        "200":
+          description: Authorized page of shared jobs.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/JobList"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+    post:
+      operationId: submitJob
+      description: Resolve target generation and capabilities, then accept durable job intent.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "../contracts/jobman/v1alpha1/schema/job-request-v1alpha1.schema.json"}
+      responses:
+        "201":
+          description: Job accepted.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Job"}
+        "200":
+          description: Idempotent replay.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Job"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "413": {$ref: "#/components/responses/ClientError"}
+        "415": {$ref: "#/components/responses/ClientError"}
+        "422": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/collections:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    post:
+      operationId: submitCollection
+      description: >-
+        Atomically resolve and accept a bounded ordered collection of jobs.
+        No child job is visible when any item fails admission.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "../contracts/jobman/v1alpha1/schema/collection-request-v1alpha1.schema.json"}
+      responses:
+        "201":
+          description: Collection and all child jobs accepted.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Collection"}
+        "200":
+          description: Idempotent replay.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Collection"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "413": {$ref: "#/components/responses/ClientError"}
+        "415": {$ref: "#/components/responses/ClientError"}
+        "422": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/collections/{collectionId}:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: collectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getCollection
+      description: Return the aggregate collection state and ordered child job snapshots.
+      responses:
+        "200":
+          description: Current authorized collection snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Collection"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/graphs:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    post:
+      operationId: submitGraph
+      description: >-
+        Atomically validate and accept an immutable directed acyclic graph.
+        Nodes may resolve to different targets; readiness remains centralized.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "../contracts/jobman/v1alpha1/schema/graph-request-v1alpha1.schema.json"}
+      responses:
+        "201":
+          description: Graph and every node job accepted.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Graph"}
+        "200":
+          description: Idempotent replay.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Graph"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "413": {$ref: "#/components/responses/ClientError"}
+        "415": {$ref: "#/components/responses/ClientError"}
+        "422": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/graphs/{graphId}:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: graphId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getGraph
+      responses:
+        "200":
+          description: Aggregate graph state, ordered nodes, and dependency satisfaction.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Graph"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/graphs/{graphId}/cancel:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: graphId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: cancelGraph
+      description: Apply ordinary durable cancellation to every nonterminal node.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Current graph after cancellation intent is applied.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Graph"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/history/imports:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    post:
+      operationId: importCompletedHistory
+      description: >-
+        Validate or import one quiescent terminal SQLite history record. Live
+        jobs and log or artifact bytes are never migrated by this endpoint. An
+        Idempotency-Key is required unless dryRun is true.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Required for an import and omitted for a dry run.
+          schema: {type: string, minLength: 1, maxLength: 200, pattern: "^[!-~]+$"}
+        - name: dryRun
+          in: query
+          schema: {type: boolean, default: false}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CompletedHistoryImportRequest"}
+      responses:
+        "201":
+          description: Imported terminal job.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Job"}
+        "200":
+          description: Idempotent replay or a valid dry-run plan.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - {$ref: "#/components/schemas/Job"}
+                  - {$ref: "#/components/schemas/CompletedHistoryImportPlan"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "415": {$ref: "#/components/responses/ClientError"}
+        "422": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: jobId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getJob
+      responses:
+        "200":
+          description: Current authorized job snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Job"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/logs:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: jobId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getJobLogs
+      description: >-
+        Return authorized logical log metadata. Bytes remain in the target-approved
+        filesystem artifact store and physical mount paths are never returned.
+      responses:
+        "200":
+          description: Current immutable log chunks and stream completeness.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/JobLogManifest"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/artifacts:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: jobId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getJobArtifacts
+      description: >-
+        Return authorized immutable output metadata. Bytes remain in the
+        target-approved artifact store and physical mount paths are never
+        returned.
+      responses:
+        "200":
+          description: Immutable output artifacts published by job executions.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/JobArtifactManifest"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/cancel:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: jobId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: cancelJob
+      description: >-
+        Record durable cancellation intent. Work that has not been accepted is
+        terminalized; accepted work receives a desired action for its agent.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Current job snapshot after the idempotent cancellation request.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Job"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/agent/enroll:
+    post:
+      operationId: enrollAgent
+      security:
+        - enrollmentToken: []
+      description: >-
+        Consume a one-time token, prove possession of a fresh private key with
+        a CSR, and obtain a short-lived client certificate. The opaque session
+        remains available only for compatibility and cannot authorize launch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentEnrollment"}
+      responses:
+        "201":
+          description: Agent and session created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "200":
+          description: Original enrollment response replayed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/agent/session/renew:
+    post:
+      operationId: renewAgentSession
+      security:
+        - agentToken: []
+      responses:
+        "200":
+          description: Old token atomically revoked and replaced.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /v1/agent/capabilities:
+    put:
+      operationId: recordAgentCapabilities
+      security:
+        - agentMutualTLS: []
+      description: >-
+        Record one immutable capability/liveness observation. Target policy
+        remains the upper authorization bound.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentCapabilities"}
+      responses:
+        "200":
+          description: Capability observation committed or identically replayed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentCapabilityReceipt"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/agent/assignments:
+    get:
+      operationId: listAgentAssignments
+      security:
+        - agentMutualTLS: []
+      description: >-
+        Redeliver inert offers. Receipt never permits target-side effects; an
+        agent must first durably journal and accept each offer.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+      responses:
+        "200":
+          description: Stable envelopes; repeated polls may return the same delivery IDs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiVersion, kind, requiresAcceptance, items]
+                properties:
+                  apiVersion: {const: jobman.control/v1alpha1}
+                  kind: {const: AgentAssignmentList}
+                  requiresAcceptance: {const: true}
+                  items:
+                    type: array
+                    items: {$ref: "../contracts/jobman/v1alpha1/schema/agent-assignment-v1alpha1.schema.json"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /v1/agent/assignments/{deliveryId}/accept:
+    parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: acceptAgentAssignment
+      security:
+        - agentMutualTLS: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "../contracts/jobman/v1alpha1/schema/agent-acceptance-v1alpha1.schema.json"}
+      responses:
+        "200":
+          description: Durable, replay-stable launch authorization.
+          content:
+            application/json:
+              schema: {$ref: "../contracts/jobman/v1alpha1/schema/launch-authorization-v1alpha1.schema.json"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "415": {$ref: "#/components/responses/ClientError"}
+  /v1/agent/executions/{executionId}/events:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: recordAgentExecutionEvent
+      security:
+        - agentMutualTLS: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "../contracts/jobman/v1alpha1/schema/execution-event-v1alpha1.schema.json"}
+      responses:
+        "200":
+          description: Event was committed or identically replayed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExecutionEventReceipt"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "415": {$ref: "#/components/responses/ClientError"}
+  /v1/agent/executions/{executionId}/logs/{stream}/chunks/{sequence}:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: stream
+        in: path
+        required: true
+        schema: {enum: [stdout, stderr]}
+      - name: sequence
+        in: path
+        required: true
+        schema: {type: integer, minimum: 1}
+    put:
+      operationId: commitAgentLogChunk
+      security:
+        - agentMutualTLS: []
+      description: >-
+        Commit metadata after the agent has durably placed immutable bytes in
+        the target generation's approved artifact store. Identical replay is safe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LogChunkRequest"}
+      responses:
+        "200":
+          description: Chunk metadata was committed or identically replayed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LogChunkReceipt"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/agent/actions:
+    get:
+      operationId: listAgentActions
+      security:
+        - agentMutualTLS: []
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+      responses:
+        "200":
+          description: Pending, redeliverable desired actions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiVersion, kind, items]
+                properties:
+                  apiVersion: {const: jobman.control/v1alpha1}
+                  kind: {const: DesiredActionList}
+                  items:
+                    type: array
+                    items: {$ref: "../contracts/jobman/v1alpha1/schema/desired-action-v1alpha1.schema.json"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /v1/agent/actions/{actionId}/acknowledge:
+    parameters:
+      - name: actionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: acknowledgeAgentAction
+      security:
+        - agentMutualTLS: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "../contracts/jobman/v1alpha1/schema/action-acknowledgement-v1alpha1.schema.json"}
+      responses:
+        "204": {description: Action acknowledgement was committed or identically replayed.}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+  /v1/agent/certificate/renew:
+    post:
+      operationId: renewAgentCertificate
+      security:
+        - agentMutualTLS: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentCertificateRenewal"}
+      responses:
+        "200":
+          description: New certificate; the authenticating certificate is atomically revoked.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentCertificate"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "409": {$ref: "#/components/responses/ClientError"}
+components:
+  securitySchemes:
+    oidcBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OIDC JWT verified against the configured issuer and audience.
+    enrollmentToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "Jobman-Enrollment <one-time-token>"
+    agentToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "Jobman-Agent <rotating-session-token>"
+    agentMutualTLS:
+      type: mutualTLS
+      description: Short-lived client certificate issued by the configured Jobman agent CA.
+  parameters:
+    Namespace:
+      name: namespace
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/Name"}
+    TargetName:
+      name: target
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/Name"}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 200, pattern: "^[!-~]+$"}
+  responses:
+    ClientError:
+      description: Invalid, forbidden, missing, or conflicting request.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unauthenticated:
+      description: No valid identity was established.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    ServerError:
+      description: Service unavailable or internal failure.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    Name:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"
+    Digest: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string}
+    Principal:
+      type: object
+      additionalProperties: false
+      required: [issuer, subject]
+      properties:
+        issuer: {type: string, minLength: 1, maxLength: 512}
+        subject: {type: string, minLength: 1, maxLength: 512}
+        displayName: {type: string, minLength: 1, maxLength: 512}
+    MembershipRequest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: Membership}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [principal, role]
+          properties:
+            principal:
+              allOf:
+                - {$ref: "#/components/schemas/Principal"}
+                - {required: [displayName]}
+            role: {enum: [viewer, submitter, operator, namespace_admin]}
+    Membership:
+      type: object
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: Membership}
+        metadata:
+          type: object
+          required: [principalId, namespace, createdAt, updatedAt]
+          properties:
+            principalId: {type: string, format: uuid}
+            namespace: {$ref: "#/components/schemas/Name"}
+            createdAt: {type: string, format: date-time}
+            updatedAt: {type: string, format: date-time}
+        spec: {$ref: "#/components/schemas/MembershipRequest/properties/spec"}
+    Partition:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {$ref: "#/components/schemas/Name"}
+        isDefault: {type: boolean, default: false}
+    ArtifactStoreReference:
+      type: object
+      additionalProperties: false
+      required: [name, version]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z]([a-z0-9._-]{0,62}[a-z0-9])?$"
+        version: {type: integer, minimum: 1}
+    TargetProvider:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: {enum: [on-prem, aws-parallelcluster]}
+        region:
+          type: string
+          pattern: "^[a-z]{2}(?:-gov)?-[a-z0-9-]+-[0-9]+$"
+        clusterName:
+          type: string
+          minLength: 1
+          maxLength: 60
+          pattern: "^[A-Za-z][A-Za-z0-9-]{0,59}$"
+    TargetSpec:
+      type: object
+      additionalProperties: false
+      required: [kind, executionBackend, runtimes]
+      properties:
+        kind: {enum: [host, slurm]}
+        executionBackend: {enum: [subprocess, slurm]}
+        controlTransport: {const: agent-api, readOnly: true}
+        runtimes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {enum: [native, container]}
+        operatingSystems:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/Name"}
+        architectures:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/Name"}
+        capabilities:
+          type: array
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/Name"}
+        partitions:
+          type: array
+          items: {$ref: "#/components/schemas/Partition"}
+        logStore: {$ref: "#/components/schemas/ArtifactStoreReference"}
+        artifactStores:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/ArtifactStoreReference"}
+        provider: {$ref: "#/components/schemas/TargetProvider"}
+    TargetStateChange:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: TargetStateChange}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [state]
+          properties:
+            state: {enum: [active, draining, disabled, retired]}
+    TargetRequest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: Target}
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [name]
+          properties:
+            name: {$ref: "#/components/schemas/Name"}
+        spec: {$ref: "#/components/schemas/TargetSpec"}
+    TargetGenerationRequest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: TargetGeneration}
+        spec: {$ref: "#/components/schemas/TargetSpec"}
+    Target:
+      type: object
+      required: [apiVersion, kind, metadata, spec, status]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: Target}
+        metadata:
+          type: object
+          required: [id, generationId, generation, namespace, name, revision, createdAt, updatedAt]
+          properties:
+            id: {type: string, format: uuid}
+            generationId: {type: string, format: uuid}
+            generation: {type: integer, minimum: 1}
+            namespace: {$ref: "#/components/schemas/Name"}
+            name: {$ref: "#/components/schemas/Name"}
+            revision: {type: integer, minimum: 1}
+            createdAt: {type: string, format: date-time}
+            updatedAt: {type: string, format: date-time}
+        spec: {$ref: "#/components/schemas/TargetSpec"}
+        status:
+          type: object
+          required: [state]
+          properties:
+            state: {enum: [active, draining, disabled, retired]}
+    EnrollmentTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AgentEnrollmentToken}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [principal, expectedUser]
+          properties:
+            principal: {$ref: "#/components/schemas/Principal"}
+            expectedUser: {type: string, minLength: 1, maxLength: 512}
+    EnrollmentToken:
+      type: object
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AgentEnrollmentToken}
+        metadata:
+          type: object
+          required: [id, namespace, expiresAt]
+          properties:
+            id: {type: string, format: uuid}
+            namespace: {$ref: "#/components/schemas/Name"}
+            expiresAt: {type: string, format: date-time}
+        spec:
+          type: object
+          required: [target, targetGenerationId, principal, expectedUser]
+          properties:
+            target: {$ref: "#/components/schemas/Name"}
+            targetGenerationId: {type: string, format: uuid}
+            principal: {$ref: "#/components/schemas/Principal"}
+            expectedUser: {type: string}
+            token: {type: string, writeOnly: true}
+    AgentEnrollment:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AgentEnrollment}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [targetGenerationId, agentVersion, protocolVersions, host, executionUser, executionBackends, runtimes, capabilities, certificateSigningRequest]
+          properties:
+            targetGenerationId: {type: string, format: uuid}
+            agentVersion: {type: string}
+            protocolVersions:
+              type: array
+              contains: {const: jobman/v1alpha1}
+            host:
+              type: object
+              required: [operatingSystem, architecture, hostname]
+              properties:
+                operatingSystem: {$ref: "#/components/schemas/Name"}
+                architecture: {$ref: "#/components/schemas/Name"}
+                hostname: {type: string}
+            executionUser: {type: string}
+            executionBackends:
+              type: array
+              items: {enum: [subprocess, slurm]}
+            runtimes:
+              type: array
+              items: {enum: [native, container]}
+            capabilities:
+              type: array
+              items: {$ref: "#/components/schemas/Name"}
+            certificateSigningRequest: {type: string, minLength: 1}
+    AgentSession:
+      type: object
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AgentSession}
+        metadata:
+          type: object
+          required: [agentId, sessionId, expiresAt]
+          properties:
+            agentId: {type: string, format: uuid}
+            sessionId: {type: string, format: uuid}
+            expiresAt: {type: string, format: date-time}
+        spec:
+          type: object
+          required: [token, authScheme, inertOnly]
+          properties:
+            token: {type: string, writeOnly: true}
+            authScheme: {const: Jobman-Agent}
+            inertOnly: {type: boolean}
+            certificate: {$ref: "#/components/schemas/AgentCertificate"}
+    AgentCertificate:
+      type: object
+      additionalProperties: false
+      required: [certificatePem, caCertificatePem, serial, expiresAt]
+      properties:
+        certificatePem: {type: string}
+        caCertificatePem: {type: string}
+        serial: {type: string}
+        expiresAt: {type: string, format: date-time}
+    AgentCertificateRenewal:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AgentCertificateRenewal}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [certificateSigningRequest]
+          properties:
+            certificateSigningRequest: {type: string, minLength: 1}
+    AgentCapabilities:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AgentCapabilities}
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [agentId, observedAt]
+          properties:
+            agentId: {type: string, format: uuid}
+            observedAt: {type: string, format: date-time}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [acceptingAssignments, agentVersion, host, executionUser, executionBackends, runtimes, capabilities]
+          properties:
+            acceptingAssignments: {type: boolean}
+            agentVersion: {type: string, minLength: 1, maxLength: 128}
+            host:
+              type: object
+              additionalProperties: false
+              required: [operatingSystem, architecture, hostname]
+              properties:
+                operatingSystem: {$ref: "#/components/schemas/Name"}
+                architecture: {$ref: "#/components/schemas/Name"}
+                hostname: {type: string, minLength: 1, maxLength: 255}
+            executionUser: {type: string, minLength: 1, maxLength: 512}
+            executionBackends:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items: {enum: [subprocess, slurm]}
+            runtimes:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items: {enum: [native, container]}
+            capabilities:
+              type: array
+              uniqueItems: true
+              items: {$ref: "#/components/schemas/Name"}
+    AgentCapabilityReceipt:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, agentId, revision, observedAt]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AgentCapabilityReceipt}
+        agentId: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        observedAt: {type: string, format: date-time}
+    ExecutionEventReceipt:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, eventId, sequence]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: ExecutionEventReceipt}
+        eventId: {type: string, format: uuid}
+        sequence: {type: integer, minimum: 1}
+    LogChunkRequest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: LogChunk}
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [executionId, stream, sequence]
+          properties:
+            executionId: {type: string, format: uuid}
+            stream: {enum: [stdout, stderr]}
+            sequence: {type: integer, minimum: 1}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [storeName, storeVersion, objectKey, byteOffset, byteLength, checksum, capturedAt, complete, truncated]
+          properties:
+            storeName:
+              type: string
+              pattern: "^[a-z]([a-z0-9._-]{0,62}[a-z0-9])?$"
+            storeVersion: {type: integer, minimum: 1}
+            objectKey: {type: string, minLength: 1, maxLength: 1024}
+            byteOffset: {type: integer, minimum: 0}
+            byteLength: {type: integer, minimum: 0, maximum: 262144}
+            checksum: {$ref: "#/components/schemas/Digest"}
+            capturedAt: {type: string, format: date-time}
+            complete: {type: boolean}
+            truncated: {type: boolean}
+    LogChunkReceipt:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, executionId, stream, sequence]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: LogChunkReceipt}
+        executionId: {type: string, format: uuid}
+        stream: {enum: [stdout, stderr]}
+        sequence: {type: integer, minimum: 1}
+    LogChunk:
+      type: object
+      additionalProperties: false
+      required: [sequence, storeName, storeVersion, objectKey, byteOffset, byteLength, checksum, capturedAt]
+      properties:
+        sequence: {type: integer, minimum: 1}
+        storeName: {type: string}
+        storeVersion: {type: integer, minimum: 1}
+        objectKey: {type: string}
+        byteOffset: {type: integer, minimum: 0}
+        byteLength: {type: integer, minimum: 0}
+        checksum: {$ref: "#/components/schemas/Digest"}
+        capturedAt: {type: string, format: date-time}
+    JobLogManifest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, namespace, jobId, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: JobLogManifest}
+        namespace: {$ref: "#/components/schemas/Name"}
+        jobId: {type: string, format: uuid}
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [executionId, runNumber, stream, state, byteLength, truncated, chunks]
+            properties:
+              executionId: {type: string, format: uuid}
+              runNumber: {type: integer, minimum: 1}
+              stream: {enum: [stdout, stderr]}
+              state: {enum: [capturing, complete]}
+              byteLength: {type: integer, minimum: 0}
+              truncated: {type: boolean}
+              chunks:
+                type: array
+                items: {$ref: "#/components/schemas/LogChunk"}
+    PublishedArtifact:
+      type: object
+      additionalProperties: false
+      required: [executionId, runNumber, name, storeName, storeVersion, objectKey, byteLength, checksum, publishedAt]
+      properties:
+        executionId: {type: string, format: uuid}
+        runNumber: {type: integer, minimum: 1}
+        name: {$ref: "#/components/schemas/Name"}
+        storeName: {$ref: "#/components/schemas/Name"}
+        storeVersion: {type: integer, minimum: 1}
+        objectKey: {type: string, minLength: 1, maxLength: 1024}
+        byteLength: {type: integer, minimum: 0}
+        checksum: {$ref: "#/components/schemas/Digest"}
+        publishedAt: {type: string, format: date-time}
+    JobArtifactManifest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, namespace, jobId, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: JobArtifactManifest}
+        namespace: {$ref: "#/components/schemas/Name"}
+        jobId: {type: string, format: uuid}
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/PublishedArtifact"}
+    Job:
+      type: object
+      required: [apiVersion, kind, metadata, spec, status]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: Job}
+        metadata:
+          type: object
+          required: [id, namespace, name, revision, createdAt, updatedAt]
+          properties:
+            id: {type: string, format: uuid}
+            namespace: {$ref: "#/components/schemas/Name"}
+            name: {$ref: "#/components/schemas/Name"}
+            labels: {type: object, additionalProperties: {type: string}}
+            revision: {type: integer, minimum: 1}
+            createdAt: {type: string, format: date-time}
+            updatedAt: {type: string, format: date-time}
+        spec:
+          type: object
+          required: [workloadDigest, placement]
+          properties:
+            workloadDigest: {$ref: "#/components/schemas/Digest"}
+            placement:
+              type: object
+              required: [target, targetId, targetGenerationId, executionBackend]
+              properties:
+                target: {$ref: "#/components/schemas/Name"}
+                partition: {$ref: "#/components/schemas/Name"}
+                targetId: {type: string, format: uuid}
+                targetGenerationId: {type: string, format: uuid}
+                executionBackend: {enum: [subprocess, slurm]}
+        status:
+          type: object
+          required: [phase, desiredState]
+          properties:
+            phase: {enum: [accepted, assigning, accepted_execution, running, terminal]}
+            desiredState: {enum: [run, cancel]}
+            outcome: {enum: [success, failure, cancelled, timed_out, aborted, lost]}
+            nativeId: {type: string, minLength: 1, maxLength: 4096}
+            observationConfidence: {enum: [current, stale, uncertain, lost]}
+            confidenceUpdatedAt: {type: string, format: date-time}
+            scheduler:
+              type: object
+              additionalProperties: false
+              required: [backend, state, observedAt]
+              properties:
+                backend: {const: slurm}
+                state:
+                  enum: [uncertain, queued, running, suspended, completing, unknown, completed, failed, cancelled, timed_out, preempted, node_failed, out_of_memory, boot_failed, deadline, lost]
+                reason: {type: string, maxLength: 4096}
+                cluster: {type: string, maxLength: 128}
+                observedAt: {type: string, format: date-time}
+    JobList:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: JobList}
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/Job"}
+        nextPageToken: {type: string, minLength: 1, maxLength: 1024}
+    Collection:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, metadata, spec, status, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: Collection}
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [id, namespace, name, revision, createdAt, updatedAt]
+          properties:
+            id: {type: string, format: uuid}
+            namespace: {$ref: "#/components/schemas/Name"}
+            name: {$ref: "#/components/schemas/Name"}
+            labels: {type: object, additionalProperties: {type: string}}
+            revision: {type: integer, minimum: 1}
+            createdAt: {type: string, format: date-time}
+            updatedAt: {type: string, format: date-time}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [maxActive, failurePolicy, arrayPolicy]
+          properties:
+            maxActive: {type: integer, minimum: 1, maximum: 10000}
+            failurePolicy: {enum: [continue, fail-fast]}
+            arrayPolicy: {enum: [never, prefer, require]}
+        status:
+          type: object
+          additionalProperties: false
+          required: [phase, arrayMode, total, active, terminal, succeeded, failed, cancelled]
+          properties:
+            phase: {enum: [accepted, running, terminal]}
+            outcome: {enum: [success, failure, cancelled]}
+            arrayMode: {enum: [individual, slurm-array]}
+            total: {type: integer, minimum: 1, maximum: 10000}
+            active: {type: integer, minimum: 0, maximum: 10000}
+            terminal: {type: integer, minimum: 0, maximum: 10000}
+            succeeded: {type: integer, minimum: 0, maximum: 10000}
+            failed: {type: integer, minimum: 0, maximum: 10000}
+            cancelled: {type: integer, minimum: 0, maximum: 10000}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items:
+            type: object
+            additionalProperties: false
+            required: [index, name, job]
+            properties:
+              index: {type: integer, minimum: 0, maximum: 9999}
+              name: {$ref: "#/components/schemas/Name"}
+              job: {$ref: "#/components/schemas/Job"}
+    Graph:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, metadata, spec, status, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: Graph}
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [id, namespace, name, revision, createdAt, updatedAt]
+          properties:
+            id: {type: string, format: uuid}
+            namespace: {$ref: "#/components/schemas/Name"}
+            name: {$ref: "#/components/schemas/Name"}
+            labels: {type: object, additionalProperties: {type: string}}
+            revision: {type: integer, minimum: 1}
+            createdAt: {type: string, format: date-time}
+            updatedAt: {type: string, format: date-time}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [maxActive, unsatisfiedPolicy]
+          properties:
+            maxActive: {type: integer, minimum: 1, maximum: 10000}
+            unsatisfiedPolicy: {enum: [skip, cancel, blocked]}
+        status:
+          type: object
+          additionalProperties: false
+          required: [phase, total, waiting, active, terminal, succeeded, failed, cancelled, skipped, blocked]
+          properties:
+            phase: {enum: [accepted, running, terminal]}
+            outcome: {enum: [success, failure, cancelled]}
+            total: {type: integer, minimum: 1, maximum: 10000}
+            waiting: {type: integer, minimum: 0, maximum: 10000}
+            active: {type: integer, minimum: 0, maximum: 10000}
+            terminal: {type: integer, minimum: 0, maximum: 10000}
+            succeeded: {type: integer, minimum: 0, maximum: 10000}
+            failed: {type: integer, minimum: 0, maximum: 10000}
+            cancelled: {type: integer, minimum: 0, maximum: 10000}
+            skipped: {type: integer, minimum: 0, maximum: 10000}
+            blocked: {type: integer, minimum: 0, maximum: 10000}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items:
+            type: object
+            additionalProperties: false
+            required: [index, name, job]
+            properties:
+              index: {type: integer, minimum: 0, maximum: 9999}
+              name: {$ref: "#/components/schemas/Name"}
+              disposition: {enum: [skipped, cancelled, blocked]}
+              dependencies:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [from, predicate, satisfied]
+                  properties:
+                    from: {$ref: "#/components/schemas/Name"}
+                    predicate: {enum: [success, failure, any-terminal, outcomes]}
+                    outcomes:
+                      type: array
+                      uniqueItems: true
+                      items: {enum: [success, failure, cancelled, timed_out, aborted, lost]}
+                    satisfied: {type: boolean}
+              job: {$ref: "#/components/schemas/Job"}
+    NamespacePolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: NamespacePolicy}
+        spec: {$ref: "#/components/schemas/NamespacePolicySpec"}
+    NamespacePolicy:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: NamespacePolicy}
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [namespace, revision, createdAt, updatedAt]
+          properties:
+            namespace: {$ref: "#/components/schemas/Name"}
+            revision: {type: integer, minimum: 1}
+            createdAt: {type: string, format: date-time}
+            updatedAt: {type: string, format: date-time}
+        spec: {$ref: "#/components/schemas/NamespacePolicySpec"}
+    NamespacePolicySpec:
+      type: object
+      additionalProperties: false
+      required: [maxActiveJobs, maxQueuedJobs, maxCollectionItems, maxGraphNodes, idempotencyRetention, publishedOutboxRetention]
+      properties:
+        maxActiveJobs: {type: integer, minimum: 1}
+        maxQueuedJobs: {type: integer, minimum: 1}
+        maxCollectionItems: {type: integer, minimum: 1, maximum: 10000}
+        maxGraphNodes: {type: integer, minimum: 1, maximum: 10000}
+        idempotencyRetention: {type: string, pattern: '^[0-9]+(h|m|s)'}
+        publishedOutboxRetention: {type: string, pattern: '^[0-9]+(h|m|s)'}
+    AuditEventList:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, items, nextAfterId]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AuditEventList}
+        nextAfterId: {type: integer, minimum: 0}
+        items:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, namespace, actorKind, action, resourceType, resourceId, details, occurredAt]
+            properties:
+              id: {type: integer, minimum: 1}
+              namespace: {$ref: "#/components/schemas/Name"}
+              actorKind: {enum: [principal, agent, system]}
+              actorPrincipalId: {type: string, format: uuid}
+              actorAgentId: {type: string, format: uuid}
+              action: {type: string}
+              resourceType: {type: string}
+              resourceId: {type: string, format: uuid}
+              requestDigest: {$ref: "#/components/schemas/Digest"}
+              idempotencyKey: {type: string, maxLength: 200}
+              details: {type: object}
+              occurredAt: {type: string, format: date-time}
+    CompletedHistoryImportRequest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: CompletedHistoryImport}
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [namespace, name]
+          properties:
+            namespace: {$ref: "#/components/schemas/Name"}
+            name: {$ref: "#/components/schemas/Name"}
+            labels: {type: object, additionalProperties: {type: string}}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [outcome, completedAt, source, workload, placement]
+          properties:
+            outcome: {enum: [success, failure, cancelled, timed_out, aborted, lost]}
+            completedAt: {type: string, format: date-time}
+            source:
+              type: object
+              additionalProperties: false
+              required: [store, schema, jobId]
+              properties:
+                store: {const: sqlite}
+                schema: {type: integer, minimum: 1}
+                jobId: {type: string, minLength: 1, maxLength: 128}
+            workload:
+              type: object
+              additionalProperties: false
+              required: [digest, document]
+              properties:
+                digest: {$ref: "#/components/schemas/Digest"}
+                document: {$ref: "../contracts/jobman/v1alpha1/schema/workload-v1alpha1.schema.json"}
+            placement:
+              type: object
+              additionalProperties: false
+              required: [target]
+              properties:
+                target: {$ref: "#/components/schemas/Name"}
+                partition: {$ref: "#/components/schemas/Name"}
+    CompletedHistoryImportPlan:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, status]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: CompletedHistoryImportPlan}
+        status:
+          type: object
+          additionalProperties: false
+          required: [result]
+          properties:
+            result: {const: valid}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}

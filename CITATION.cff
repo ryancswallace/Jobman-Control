@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: If you use Jobman Control, please cite this software.
+type: software
+title: Jobman Control
+authors:
+  - family-names: Wallace
+    given-names: Ryan
+repository-code: https://github.com/ryancswallace/jobman-control
+url: https://github.com/ryancswallace/jobman-control
+license: MIT

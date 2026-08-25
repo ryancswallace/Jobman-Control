@@ -1,0 +1,51 @@
+---
+name: Repository maintenance
+
+on:
+  schedule:
+    - cron: "23 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobman-control-maintenance
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate repository invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+        env:
+          POSTGRES_DB: jobman_control_test
+          POSTGRES_PASSWORD: jobman-control-test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d jobman_control_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout complete release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+      - name: Run complete invariant gate
+        env:
+          JOBMAN_CONTROL_TEST_DATABASE_URL: >-
+            postgres://postgres:jobman-control-test@127.0.0.1:5432/jobman_control_test?sslmode=disable
+        run: make check integration-test
+      - name: Require deterministic repository output
+        run: git diff --exit-code

@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+*.png binary
+contracts/jobman/v1alpha1/conformance/**/*.json text eol=lf
+contracts/jobman/v1alpha1/schema/*.json text eol=lf
