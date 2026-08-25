@@ -1,0 +1,27 @@
+# Build and test output
+bin/
+dist/
+coverage.*
+*.test
+generated-formula/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.p12
+*.pfx
+*.pem
+*.dump
+*.backup
+
+# Developer-local service material
+.devcontainer/.env.local
+
+# Local Go workspace and editor files
+go.work
+go.work.sum
+.DS_Store
+Thumbs.db
+*.code-workspace
