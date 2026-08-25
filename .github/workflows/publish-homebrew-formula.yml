@@ -1,0 +1,158 @@
+---
+name: Publish Homebrew formula
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable tag to publish or repair
+        required: true
+        type: string
+
+concurrency:
+  group: jobman-control-homebrew
+  cancel-in-progress: false
+
+permissions: read-all
+
+jobs:
+  publish:
+    name: Publish verified formula to Homebrew tap
+    if: >-
+      (github.event_name == 'release' && !github.event.release.prerelease) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    environment:
+      name: main
+      url: https://github.com/ryancswallace/homebrew-tap
+    steps:
+      - name: Checkout trusted formula generator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || 'main' }}
+
+      - name: Validate published stable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable semantic version tag such as v0.1.0." >&2
+            exit 1
+          fi
+          state=$(gh release view "${RELEASE_TAG}" --repo ryancswallace/jobman-control \
+            --json isDraft,isPrerelease,tagName \
+            --jq '[.isDraft,.isPrerelease,.tagName] | @tsv')
+          IFS=$'\t' read -r draft prerelease resolved_tag <<< "${state}"
+          if [[ "${draft}" != false || "${prerelease}" != false || "${resolved_tag}" != "${RELEASE_TAG}" ]]; then
+            echo "${RELEASE_TAG} is not the exact published stable release." >&2
+            exit 1
+          fi
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${RELEASE_TAG}^{commit}" origin/main; then
+            echo "${RELEASE_TAG} must point to a commit on main." >&2
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Generate formula from verified checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: |
+          mkdir -p generated-formula
+          gh release download "${RELEASE_TAG}" --repo ryancswallace/jobman-control \
+            --pattern "jobman-control_${RELEASE_TAG#v}_checksums.txt" \
+            --pattern "jobman-control_${RELEASE_TAG#v}_checksums.txt.sigstore.json" \
+            --pattern "jobman-control_${RELEASE_TAG#v}_darwin_*.tar.gz" \
+            --dir generated-formula
+          manifest="generated-formula/jobman-control_${RELEASE_TAG#v}_checksums.txt"
+          cosign verify-blob \
+            --bundle "${manifest}.sigstore.json" \
+            --certificate-identity \
+              "https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/tags/${RELEASE_TAG}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${manifest}"
+          (
+            cd generated-formula
+            grep '  jobman-control_.*_darwin_.*\.tar\.gz$' "$(basename "${manifest}")" \
+              | sha256sum --check
+          )
+          for archive in generated-formula/jobman-control_*_darwin_*.tar.gz; do
+            gh attestation verify "${archive}" --repo ryancswallace/jobman-control \
+              --signer-workflow ryancswallace/jobman-control/.github/workflows/release.yml \
+              --source-ref "refs/tags/${RELEASE_TAG}" >/dev/null
+          done
+          go run ./devel/homebrewformula -checksums "${manifest}" \
+            -output generated-formula/jobman-control.rb
+
+      - name: Verify Homebrew tap token
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          permissions=$(gh api repos/ryancswallace/homebrew-tap \
+            --jq '[.permissions.push,.permissions.maintain,.permissions.admin] | any')
+          if [[ "${permissions}" != true ]]; then
+            echo "HOMEBREW_TAP_TOKEN cannot update ryancswallace/homebrew-tap." >&2
+            exit 1
+          fi
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ryancswallace/homebrew-tap
+          path: homebrew-tap
+          persist-credentials: true
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Propose verified formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: |
+          formula=generated-formula/jobman-control.rb
+          test -s "${formula}"
+          grep -Fq "/releases/download/${RELEASE_TAG}/" "${formula}"
+          install -m 0644 "${formula}" homebrew-tap/Formula/jobman-control.rb
+          cd homebrew-tap
+          if git diff --quiet -- Formula/jobman-control.rb; then
+            echo "Homebrew formula already describes ${RELEASE_TAG}."
+            exit 0
+          fi
+          branch="automation/jobman-control-${RELEASE_TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "${branch}"
+          git add Formula/jobman-control.rb
+          git commit -m "jobman-control ${RELEASE_TAG#v}"
+          remote_oid=$(git ls-remote --refs origin "refs/heads/${branch}" | awk '{print $1}')
+          if [[ -n "${remote_oid}" ]]; then
+            git push --force-with-lease="refs/heads/${branch}:${remote_oid}" \
+              origin "HEAD:refs/heads/${branch}"
+          else
+            git push origin "HEAD:refs/heads/${branch}"
+          fi
+          pr_url=$(gh pr list --repo ryancswallace/homebrew-tap --head "${branch}" \
+            --state open --json url --jq '.[0].url // empty')
+          if [[ -z "${pr_url}" ]]; then
+            pr_url=$(gh pr create --repo ryancswallace/homebrew-tap --base main \
+              --head "${branch}" --title "jobman-control ${RELEASE_TAG#v}" \
+              --body "Automated verified formula update for Jobman Control ${RELEASE_TAG}.")
+          fi
+          gh pr merge "${pr_url}" --auto --squash --delete-branch
