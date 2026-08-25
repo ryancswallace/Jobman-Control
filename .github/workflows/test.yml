@@ -1,0 +1,187 @@
+---
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobman-control-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Validate source and contracts
+        run: make mod-check format-check lint vet contracts-check workflow-check shellcheck
+
+  test:
+    name: Unit and PostgreSQL integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    services:
+      postgres:
+        image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+        env:
+          POSTGRES_DB: jobman_control_test
+          POSTGRES_PASSWORD: jobman-control-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d jobman_control_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Run tests and coverage
+        env:
+          JOBMAN_CONTROL_TEST_DATABASE_URL: >-
+            postgres://postgres:jobman-control-test@127.0.0.1:5432/jobman_control_test?sslmode=disable
+        run: make coverage-check
+
+      - name: Build service
+        run: make build
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          files: ./coverage.txt
+          disable_search: true
+          fail_ci_if_error: true
+
+  platform:
+    name: Native race (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Run race-enabled native tests
+        run: go test -race -shuffle=on ./...
+
+      - name: Test release-style build
+        env:
+          CGO_ENABLED: "0"
+        run: go build -trimpath ./...
+
+  architecture:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: "386"
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: windows
+            goarch: "386"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Compile release architecture
+        env:
+          CGO_ENABLED: "0"
+          GOARCH: ${{ matrix.goarch }}
+          GOOS: ${{ matrix.goos }}
+        run: go build -trimpath ./...
+
+  repository:
+    name: Repository and release checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout complete release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.version
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Validate documentation
+        run: make docs
+
+      - name: Exercise runtime container
+        run: make docker-smoke
+
+      - name: Validate and compile release matrix
+        run: make release-check release-build
