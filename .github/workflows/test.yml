@@ -82,7 +82,7 @@ jobs:
           use_oidc: true
           files: ./coverage.txt
           disable_search: true
-          fail_ci_if_error: true
+          fail_ci_if_error: false
 
   platform:
     name: Native race (${{ matrix.os }})
