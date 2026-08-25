@@ -1,0 +1,46 @@
+---
+name: Jobman contract source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**"
+      - "devel/contractsync/**"
+  schedule:
+    - cron: "11 5 * * 4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobman-control-contract-source
+  cancel-in-progress: true
+
+jobs:
+  source:
+    name: Compare canonical Jobman protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Control
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: jobman-control
+          persist-credentials: false
+      - name: Checkout canonical Jobman source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ryancswallace/jobman
+          path: jobman
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: jobman-control/go.version
+          check-latest: true
+          cache-dependency-path: jobman-control/go.sum
+      - name: Compare snapshot with canonical source
+        working-directory: jobman-control
+        run: make contracts-source-check JOBMAN_DIR=../jobman
