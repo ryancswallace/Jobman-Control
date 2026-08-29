@@ -7,168 +7,94 @@
 <!-- markdownlint-enable MD033 -->
 
 [![Test](https://github.com/ryancswallace/jobman-control/actions/workflows/test.yml/badge.svg)](https://github.com/ryancswallace/jobman-control/actions/workflows/test.yml)
+[![Codecov](https://codecov.io/gh/ryancswallace/jobman-control/branch/main/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman-control)
 [![CodeQL](https://github.com/ryancswallace/jobman-control/actions/workflows/codeql.yml/badge.svg)](https://github.com/ryancswallace/jobman-control/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ryancswallace/jobman-control/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ryancswallace/jobman-control)
-[![codecov](https://codecov.io/gh/ryancswallace/jobman-control/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman-control)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ryancswallace/jobman-control/badge)](https://scorecard.dev/viewer/?uri=github.com/ryancswallace/jobman-control)
+[![Latest release](https://img.shields.io/github/v/release/ryancswallace/jobman-control?sort=semver)](https://github.com/ryancswallace/jobman-control/releases/latest)
+[![Go version](https://img.shields.io/github/go-mod/go-version/ryancswallace/jobman-control)](https://github.com/ryancswallace/jobman-control/blob/main/go.mod)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman-control.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman-control)
+[![Documentation](https://img.shields.io/badge/docs-Jobman_Control-blue)](docs/README.md)
+[![OSS hosting by Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-Cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com/)
 
-Jobman Control is the pre-release shared control plane for
-[Jobman](https://github.com/ryancswallace/jobman). This repository is
-pre-release and currently implements named-host subprocess, Slurm,
-ParallelCluster target generations, S3/container admission, and transactional
-collection/array and cross-target dependency-graph control-plane slices, plus
-the first quota, fairness, metrics, audit-export, retention, restore-hold, and
-completed-history-import pass.
-It is not ready for production use.
+Jobman Control is the shared control plane for
+[Jobman](https://github.com/ryancswallace/jobman). It gives workstations,
+on-premises Slurm clusters, and AWS ParallelCluster deployments one place to
+submit work, enforce policy, and track results.
 
-## What this slice implements
+> [!WARNING]
+> Jobman Control is pre-release evaluation software. The initial implementation
+> is ready for development and integration testing, but it has not completed
+> the department's production acceptance exercises.
 
-- A versioned `jobman/v1alpha1` portable workload and job-request contract,
-  copied from Jobman's canonical source with schemas, conformance fixtures,
-  and a checksum lock.
-- A PostgreSQL migration stream for principals, namespaces, memberships,
-  immutable target generations, partitions, agents, rotating sessions,
-  workload revisions, jobs, runs, executions, inert assignments, idempotency,
-  audit events, agent certificates, ordered execution events, durable desired
-  actions, capability snapshots, filesystem-log streams and chunks, immutable
-  output-artifact metadata, collections and ordered child bindings, and a
-  transactional outbox. Later migrations add immutable graphs and edges,
-  namespace policy, persistent recovery state, and completed-history
-  provenance.
-  Composite foreign keys enforce the
-  namespace path between related control resources.
-- OIDC discovery and signed JWT validation with exact issuer, audience, expiry,
-  and stable subject checks. Namespace roles are enforced at repository
-  boundaries; namespace administrators can provision other memberships.
-- Namespace target registration for host/subprocess and Slurm/Slurm policy,
-  native/container runtime allowlists, platform requirements, capabilities,
-  configured partitions, an optional approved logical log-store mapping, and
-  approved logical artifact-store mappings.
-- Revision-checked immutable target-generation rollover, including explicit
-  `on-prem` or `aws-parallelcluster` provider facts. New jobs resolve the
-  current generation while existing jobs and agents remain pinned to the
-  generation they accepted.
-- `POST /v1/namespaces/{namespace}/jobs`, with principal/namespace-scoped
-  idempotency, target capability validation, default-partition resolution, and
-  immutable target-generation pinning. Admission also rejects portable
-  features that the selected first-slice backend cannot execute: resource
-  requests are Slurm-only, temporary storage is not yet supported, and both
-  backends require direct native or target-approved container commands without
-  profiles, secrets, extensions, or retries. Declared regular-file artifacts
-  may use one approved local/NFS or S3 logical store.
-- Transactional collection submission and authorized aggregate reads. All
-  children and target bindings are accepted or none are; `maxActive` bounds
-  ordinary dispatch, fail-fast creates durable sibling cancellation, and
-  compatible `prefer`/`require` Slurm collections carry an immutable array
-  task mapping while retaining independent child jobs and outcomes.
-- Transactional immutable dependency-graph submission and authorized aggregate
-  reads. Control rejects cycles and invalid references, resolves every node's
-  placement before committing, gates nodes on explicit terminal-outcome
-  predicates across targets, enforces graph concurrency, terminalizes
-  unsatisfied branches according to policy, and applies ordinary cancellation
-  semantics to every nonterminal node.
-- Per-namespace active, queued, collection-size, and graph-size limits with
-  serialized admission; revision-checked administrator policy replacement;
-  and namespace round-robin assignment selection with FIFO ordering inside
-  each namespace. Slurm retains its native scheduling and fair-share policy.
-- A bounded-cardinality Prometheus endpoint, append-only ascending audit export
-  for operators and namespace administrators, and policy-driven pruning of
-  completed idempotency records and published outbox events only. Audit and
-  active lifecycle evidence are never age-pruned by this path.
-- A persistent recovery epoch and reconciliation hold that stops all new
-  assignment after a restore until an operator reconciles target-side facts.
-- Explicit dry-run-capable import of quiescent completed SQLite metadata. Each
-  record receives a new shared ID and retained source provenance without
-  creating a run, execution, or assignment; active work and bulk bytes are
-  rejected from this migration boundary.
-- `GET /v1/namespaces/{namespace}/jobs/{jobId}`, with namespace membership
-  enforced in the read query.
-- `GET /v1/namespaces/{namespace}/jobs`, with membership-protected phase
-  filtering and stable newest-first keyset pagination.
-- Liveness and database/migration-aware readiness endpoints.
-- Short-lived, single-use agent enrollment tokens, local-key CSR proof,
-  operator-CA-issued mTLS client certificates, atomic certificate rotation,
-  database-backed revocation, and legacy inert opaque sessions. Agent private
-  keys never leave their host.
-- Replay-safe rotating agent sessions, immutable capability/liveness snapshots,
-  target active/draining/disabled/retired transitions, assignment freshness
-  checks, and conservative stale-observation reconciliation. Silence never
-  implies that an accepted execution is safe to reassign.
-- A PostgreSQL-coordinated reconciler that creates one run, one execution, and
-  one stable, redeliverable assignment envelope for each eligible job/agent.
-  Array children are affinity-bound to one generation-specific agent and may
-  be offered together while Slurm enforces the collection concurrency bound.
-- Durable compare-and-swap assignment acceptance. Receipt of an offer is
-  inert; only the replay-stable launch authorization returned after acceptance
-  permits an agent to start target-side work.
-- Monotonic, idempotent process and scheduler events that atomically advance
-  execution, run, and job snapshots. Slurm events preserve submitted,
-  uncertain, observed, and terminal scheduler evidence; job reads expose the
-  latest native job ID, normalized state, cluster, reason, and observation
-  time.
-- Idempotent stdout/stderr chunk manifests with gap-safe out-of-order delivery.
-  Agents place immutable, checksummed bytes in the target-approved local/NFS or
-  S3 store before committing metadata; PostgreSQL exposes only each contiguous
-  source prefix and never stores or proxies log bytes.
-- Membership-authorized job log manifests for clients that resolve logical
-  store/version/key references through their own platform-specific mounts.
-- Target-approved regular-file input/output mappings pinned into each effective
-  execution, transactional validation of terminal output metadata, and
-  membership-authorized job artifact manifests. PostgreSQL never stores or
-  proxies artifact bytes or physical paths.
-- Idempotent job cancellation: unaccepted work is withdrawn without launch;
-  accepted work receives a redeliverable desired action with a separate
-  durable acknowledgement.
-- An explicitly enabled, loopback-only development identity for local testing.
+## What it provides
 
-This repository remains the control-plane service: it never starts a
-subprocess, invokes Slurm, opens SSH, or executes workload content. The
-host-local `jobman-agent`, subprocess runner, and Slurm CLI adapter live in the
-Jobman repository and consume these APIs. Jobman v1.7.0 introduced the
-compatible `jobman shared` client for target inspection, idempotent submission,
-paginated job inspection, wait, cancellation, verified filesystem-log
-read/follow, artifact discovery, collection submit/show, graph
-submit/show/cancel, completed-history import, and client-side recovery of an
-uncertain single-job submission.
+| Capability | Jobman Control provides... |
+| --- | --- |
+| Shared state | PostgreSQL-backed jobs, runs, assignments, target generations, policy, and audit history |
+| Placement | Named hosts, on-premises Slurm partitions, and AWS ParallelCluster target records |
+| Admission | Portable workload validation against target, runtime, platform, resource, log, and artifact capabilities |
+| Coordination | Idempotent submission, namespace quotas, fair dispatch, cancellation, collections, Slurm arrays, and dependency graphs |
+| Agent trust | One-time enrollment, mTLS certificates, rotating sessions, generation pinning, and replay-safe assignment acceptance |
+| Identity | OIDC users, namespace memberships, and repository-level authorization checks |
+| Results | Ordered execution events plus checksummed log and artifact manifests for local filesystems, NFS, and S3 |
+| Operations | Readiness, bounded Prometheus metrics, audit export, retention policy, restore holds, and completed-history import |
 
-```text
-Jobman request -> OIDC/development identity -> namespace authorization
-               -> target + generation capability resolution
-               -> accepted job transaction
-               -> coordinator claim (FOR UPDATE SKIP LOCKED)
-                  ├── run + planned execution
-                  ├── immutable effective execution
-                  ├── inert assignment offer
-                  ├── system audit event
-                  └── durable outbox event
-               -> agent journals offer -> atomic acceptance
-               -> launch authorization -> ordered process or scheduler events
-               -> immutable log objects -> ordered metadata commits
-               -> immutable outputs -> transactional artifact metadata
-               -> terminal job outcome
+## How it fits
+
+```mermaid
+flowchart LR
+    client["Jobman clients"] -->|"OIDC + HTTPS"| control["Jobman Control"]
+    control -->|"durable metadata + intent"| postgres[("PostgreSQL")]
+    control -->|"mTLS assignments"| agent1["Agent: workstation"]
+    control -->|"mTLS assignments"| agent2["Agent: Slurm submit host"]
+    agent1 --> process["Subprocess / container"]
+    agent2 --> slurm["Slurm / ParallelCluster"]
+    agent1 --> stores["Local / NFS / S3 bytes"]
+    agent2 --> stores
 ```
 
-## Documentation
+The split is deliberate:
 
-Start with the [documentation index](docs/README.md). Separate guides cover the
-[architecture](docs/ARCHITECTURE.md), [API](docs/API.md),
-[configuration](docs/CONFIGURATION.md), [development](docs/DEVELOPMENT.md),
-[deployment](docs/DEPLOYMENT.md), [operations](docs/OPERATIONS.md),
-[security model](docs/SECURITY_MODEL.md),
-[production readiness](docs/PRODUCTION_READINESS.md), and
-[compatibility](docs/COMPATIBILITY.md).
+| Component | Owns |
+| --- | --- |
+| Jobman Control | API, PostgreSQL state, authorization, placement policy, coordination, audit, and recovery controls |
+| `jobman-agent` | Target-side execution, Slurm CLI calls, runtime adapters, durable local journals, and byte transfer |
+| `jobman shared` | User-facing submission, inspection, waiting, cancellation, logs, artifacts, collections, and graphs |
+| Department infrastructure | PostgreSQL availability, OIDC, TLS, NFS/S3 policy, Slurm configuration, AWS infrastructure, and backups |
 
-## Development quick start
+Control never starts a process, invokes Slurm, opens SSH, or proxies workload
+bytes. PostgreSQL holds metadata and durable intent; log and artifact bytes
+stay in the target-approved store.
 
-The service currently exercises PostgreSQL 17.6 in CI. Start an isolated local
-database using the pinned Compose definition:
+## Supported model
 
-```sh
+| Layer | Supported in the initial implementation |
+| --- | --- |
+| State | PostgreSQL for shared mode; standalone Jobman continues to use local SQLite |
+| Execution | Subprocess and Slurm, performed by `jobman-agent` |
+| Control path | Agent API for steady-state work; SSH bootstrap and Slurm CLI remain target-side Jobman features |
+| Runtime | Native commands plus target-approved Docker, Podman, or Apptainer execution |
+| Artifacts and logs | Local filesystem, NFS, or S3 object references with bounded checksummed manifests |
+| Placement | Named host, Slurm cluster/partition, or ParallelCluster generation |
+| Grouping | Single jobs, collections, compatible Slurm arrays, and cross-target dependency graphs |
+| Isolation | OIDC principals, namespaces, memberships, roles, quotas, and immutable target generations |
+
+The portable `jobman/v1alpha1` workload contract keeps these choices
+composable. A request describes work and requirements without embedding a
+particular transport, scheduler command, mount point, or cloud deployment.
+
+## Try it locally
+
+You need Docker and the Go version pinned in [`go.version`](go.version).
+
+```console
+make setup
 docker compose up -d postgres
 ```
 
-In another terminal:
+Start Control with its loopback-only development identity:
 
-```sh
+```console
 export JOBMAN_CONTROL_DATABASE_URL='postgres://postgres:jobman-control-development@127.0.0.1:5432/jobman_control?sslmode=disable'
 export JOBMAN_CONTROL_AUTH_MODE=development
 export JOBMAN_CONTROL_DEVELOPMENT_AUTH=true
@@ -176,171 +102,121 @@ export JOBMAN_CONTROL_DEVELOPMENT_NAMESPACE=research
 make run
 ```
 
-Register the target named by the locked job-request fixture:
+Check the process and database separately:
 
-```sh
-curl --fail-with-body \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: target-workstation-a-001' \
-  --data-binary '{
-    "apiVersion":"jobman.control/v1alpha1",
-    "kind":"Target",
-    "metadata":{"name":"workstation-a"},
-    "spec":{"kind":"host","executionBackend":"subprocess",
-      "runtimes":["native"],"operatingSystems":["linux"],
-      "architectures":["amd64"],
-      "logStore":{"name":"department-nfs","version":1}}
-  }' \
-  http://127.0.0.1:8080/v1/namespaces/research/targets
+```console
+curl --fail http://127.0.0.1:8080/healthz
+curl --fail http://127.0.0.1:8080/readyz
 ```
 
-Submit the locked example request:
+Development authentication is intentionally restricted to loopback. For
+target registration, job submission, and agent enrollment examples, continue
+with the [API guide] and [development guide].
 
-```sh
-curl --fail-with-body \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: example-submit-001' \
-  --data-binary @contracts/jobman/v1alpha1/conformance/valid/job-request-minimal.json \
-  http://127.0.0.1:8080/v1/namespaces/research/jobs
-```
+## Configuration at a glance
 
-Resending the same canonical request with the same key returns the same job and
-`Idempotency-Replayed: true`. Reusing that key for different request intent
-returns HTTP 409. The response's `Location` header identifies the GET endpoint.
+| Need | Settings |
+| --- | --- |
+| PostgreSQL | `JOBMAN_CONTROL_DATABASE_URL`, `JOBMAN_CONTROL_MIGRATE_ON_START` |
+| Listener | `JOBMAN_CONTROL_LISTEN`, `JOBMAN_CONTROL_TLS_CERT_FILE`, `JOBMAN_CONTROL_TLS_KEY_FILE` |
+| User identity | `JOBMAN_CONTROL_AUTH_MODE`, `JOBMAN_CONTROL_OIDC_ISSUER`, `JOBMAN_CONTROL_OIDC_AUDIENCE` |
+| Initial OIDC administrator | `JOBMAN_CONTROL_BOOTSTRAP_SUBJECT`, `JOBMAN_CONTROL_BOOTSTRAP_NAME`, `JOBMAN_CONTROL_BOOTSTRAP_NAMESPACE` |
+| Agent identity | `JOBMAN_CONTROL_AGENT_TOKEN_KEY`, `JOBMAN_CONTROL_AGENT_CA_CERT_FILE`, `JOBMAN_CONTROL_AGENT_CA_KEY_FILE` |
+| Reconciliation | `JOBMAN_CONTROL_AGENT_STALE_AFTER` |
 
-The complete first-slice API is described by
-[`api/openapi-v1alpha1.yaml`](api/openapi-v1alpha1.yaml).
-The Compose database is disposable development infrastructure; never reuse its
-credential outside this checkout.
+Clients and agents never receive PostgreSQL credentials. Production OIDC and
+agent execution require the TLS and key-handling rules in the
+[configuration guide] and [security model].
 
-## Configuration
+## Installation
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `JOBMAN_CONTROL_DATABASE_URL` | required | PostgreSQL connection string; never returned or intentionally logged |
-| `JOBMAN_CONTROL_AUTH_MODE` | required unless development compatibility flag is set | `development` or `oidc` |
-| `JOBMAN_CONTROL_DEVELOPMENT_AUTH` | `false` | Compatibility switch selecting loopback-only `development` mode |
-| `JOBMAN_CONTROL_LISTEN` | `127.0.0.1:8080` | HTTP/TLS listener; development mode is loopback-only |
-| `JOBMAN_CONTROL_DEVELOPMENT_ISSUER` | `jobman-control-development` | Fixed development principal issuer |
-| `JOBMAN_CONTROL_DEVELOPMENT_SUBJECT` | `local-developer` | Fixed development principal subject |
-| `JOBMAN_CONTROL_DEVELOPMENT_NAME` | `local-developer` | Development principal display name |
-| `JOBMAN_CONTROL_DEVELOPMENT_NAMESPACE` | `default` | Namespace created for the development principal |
-| `JOBMAN_CONTROL_OIDC_ISSUER` | required in OIDC mode | Exact HTTPS issuer used for discovery and token validation |
-| `JOBMAN_CONTROL_OIDC_AUDIENCE` | required in OIDC mode | Required JWT audience |
-| `JOBMAN_CONTROL_AGENT_TOKEN_KEY` | required in OIDC mode | Unpadded base64url encoding of at least 32 secret bytes used to derive agent credentials; never logged |
-| `JOBMAN_CONTROL_BOOTSTRAP_SUBJECT` | unset | Optional initial OIDC administrator subject; set with bootstrap name and namespace |
-| `JOBMAN_CONTROL_BOOTSTRAP_NAME` | unset | Display name for the optional initial administrator |
-| `JOBMAN_CONTROL_BOOTSTRAP_NAMESPACE` | unset | Namespace for the optional initial administrator |
-| `JOBMAN_CONTROL_TLS_CERT_FILE` | unset | TLS certificate chain; required with the key on a non-loopback OIDC listener |
-| `JOBMAN_CONTROL_TLS_KEY_FILE` | unset | TLS private-key file; required with the certificate |
-| `JOBMAN_CONTROL_AGENT_CA_CERT_FILE` | unset | Agent client-certificate CA; enables execution APIs and requires server TLS |
-| `JOBMAN_CONTROL_AGENT_CA_KEY_FILE` | unset | Private key for the agent CA; keep readable only by the service identity |
-| `JOBMAN_CONTROL_AGENT_STALE_AFTER` | `2m` | Silence interval before accepted/running observations are marked stale |
-| `JOBMAN_CONTROL_MIGRATE_ON_START` | `true` | Apply embedded forward-only migrations before serving |
+Jobman Control v0.1.x is an evaluation channel. Build from a reviewed source
+commit or install a verified release artifact when one is available.
 
-Development mode defaults to no TLS or token authentication. Its loopback
-restriction is a safety boundary, and it uses a fixed development-only
-agent-token key. Exercising the agent execution slice still requires an HTTPS
-server certificate and the agent CA pair, even in development mode.
-OIDC mode validates bearer JWTs using provider discovery and requires TLS for a
-non-loopback listener. The optional bootstrap identity is operator-controlled;
-normal membership changes use the audited API. Clients and agents must never
-receive PostgreSQL credentials.
+| Distribution | Intended use |
+| --- | --- |
+| Portable archives | Linux, macOS, and Windows evaluation installs |
+| Native packages | DEB, RPM, and APK installs with service scaffolding |
+| OCI image | Non-root Linux service deployments on amd64 or arm64 |
+| Source build | Development and reviewed internal builds |
 
-Opaque agent sessions are intentionally restricted to compatibility operations
-and cannot poll assignments or authorize execution. Execution endpoints require
-a CA-verified client certificate whose agent, key digest, expiry, revocation,
-target, and target generation are rechecked in PostgreSQL.
+Release artifacts include checksums, signatures, provenance, and SBOMs. See
+the [installation guide], [deployment guide], and [release guide] before using
+them.
 
-See [the configuration guide](docs/CONFIGURATION.md) for validation rules and
-production secret-handling requirements.
+## Documentation
 
-## Contract ownership
+| Topic | Resource |
+| --- | --- |
+| API and examples | [API guide] and [OpenAPI contract] |
+| Configuration | [Configuration guide][configuration guide] |
+| Deployment and containers | [Deployment guide][deployment guide] and [container guide] |
+| Day-two operations | [Operations guide] |
+| Identity and trust boundaries | [Security model][security model] |
+| Compatibility | [Compatibility reference] |
+| Production gaps and acceptance work | [Production-readiness review] |
+| Repository and service boundaries | [Architecture guide] |
+| Releases and artifact verification | [Release guide][release guide] |
 
-Jobman's `protocol/` directory is canonical. This repository carries a
-mechanically copied, checksummed snapshot under
-`contracts/jobman/v1alpha1/`, pinned to Jobman v1.7.0 and verified unchanged in
-v1.8.0. The source lock is recorded in
-`contracts/jobman/v1alpha1/SOURCE.md`.
+Use the [issue tracker] for reproducible bugs and feature proposals. Report
+suspected vulnerabilities privately according to the [security policy].
 
-```sh
-make contracts-source-check JOBMAN_DIR=../jobman
-make contracts-sync JOBMAN_DIR=../jobman
-```
+## Current boundaries
 
-`contracts-source-check` detects drift from a neighboring Jobman checkout;
-`contracts-check` verifies the snapshot against its checked-in
-`checksums.txt` without requiring that checkout. Do not edit copied contract
-source, schemas, or fixtures in this repository. A refresh must originate in
-Jobman and record the exact tagged source version and commit.
+| Area | Current boundary |
+| --- | --- |
+| Production status | On-premises Slurm, ParallelCluster, restore, failure, load, and security exercises remain to be completed in the department environment |
+| Cloud and scheduler management | Control records approved placement facts; it does not provision, resize, or validate Slurm or AWS infrastructure |
+| Delivery semantics | Operations are idempotent and replay-safe, but external execution is not promised to be exactly once |
+| Credentials | Per-execution secret and cloud-credential brokering is not implemented |
+| Filesystems | Cross-user filesystem ownership and ACL provisioning remain an operator responsibility |
+| Recovery | Restore holds and reconciliation state exist; automated convergence proof and emergency CA rollover APIs do not |
+| Scheduling | Namespace round-robin and FIFO dispatch are implemented; priority classes and target-weighted fairness are not |
+| Database operations | Embedded migrations are convenient for evaluation; production still needs a separately controlled least-privilege migration procedure |
 
-## Validation
+The [production-readiness review] is the authoritative checklist. Passing CI
+does not replace deployment review or site acceptance.
 
-```sh
+## Development
+
+Use the included devcontainer or a local Go installation:
+
+```console
 make setup
 make quick-check
+make check
 ```
 
-PostgreSQL integration tests create and remove a uniquely named schema in an
-explicit test database. They are skipped unless the following setting is
-present:
+`make help` lists test, documentation, contract, container, and release
+targets. PostgreSQL integration tests use only the explicit
+`JOBMAN_CONTROL_TEST_DATABASE_URL` test setting and otherwise skip.
 
-```sh
-export JOBMAN_CONTROL_TEST_DATABASE_URL='postgres://postgres:password@127.0.0.1:5432/jobman_control_test?sslmode=disable'
-make integration-test
+Jobman's `protocol/` directory is the canonical source for the portable
+contract. This repository carries a checksummed snapshot under
+`contracts/jobman/v1alpha1/`:
+
+```console
+make contracts-check
+make contracts-source-check JOBMAN_DIR=../jobman
 ```
 
-`make check` adds coverage, workflow and shell validation, documentation,
-reachable-vulnerability analysis, cross-platform release builds, and container
-and release-configuration checks.
+Do not edit copied schemas or fixtures here. Contract changes begin in Jobman
+and are synchronized from an exact tagged source commit.
 
-## Deliberate limitations
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
 
-- One configured OIDC issuer and JWT bearer tokens are supported; CLI browser
-  login/device flow, multiple issuers, service principals, revocation feeds,
-  and proxy-terminated TLS policy remain future work.
-- Certificate revocation is currently exercised by rotation and agent/target
-  state checks. Administrative emergency revocation and CA rotation APIs and
-  runbooks remain future work.
-- Target generations can roll over immutable policy with revision and
-  idempotency checks. Control records ParallelCluster region/name facts but
-  does not provision, inspect, resize, or validate AWS infrastructure;
-  identity mappings and administrative agent revocation remain future work.
-- This slice supports one execution per child job, process or normalized Slurm
-  scheduler lifecycle facts, local/NFS or S3-backed stdout/stderr metadata, one
-  logical regular-file artifact store per workload, and explicit collections
-  with optional Slurm-array compilation. SSH bootstrap, containers, S3 byte
-  transfer, and native array submission live in the Jobman agent repository;
-  Control never performs those effects. Standalone Slurm, cross-user
-  filesystem ACL provisioning, per-execution cloud credential brokering,
-  retries, and collection-level cancellation remain future work. Graph
-  cancellation is implemented; native Slurm dependencies are intentionally not
-  authoritative.
-- For a target with `logStore` configured, Control deliberately rejects the
-  terminal process or scheduler event until both stdout and stderr streams have complete,
-  contiguous manifests. A missing or misconfigured agent artifact store
-  therefore leaves the execution nonterminal for retry and operator repair
-  instead of silently losing its logs.
-- The coordinator uses bounded periodic scans, namespace round-robin claims,
-  and FIFO ordering within each namespace. It marks silent accepted/running
-  observations stale without guessing terminal state. Priority classes,
-  target-level weighted fairness, outbox publication, and automatic destructive
-  repair/reassignment policy remain future work.
-- Collection aggregation is derived from child jobs. Native arrays require one
-  compatible target generation, partition, agent, and portable resource shape;
-  large-array scale/chaos behavior and real Slurm/ParallelCluster acceptance
-  remain unverified.
-- Opaque agent credential derivation depends on the configured token key; a
-  production rotation and recovery runbook is not yet defined.
-- Completed idempotency records and published outbox events use bounded
-  per-namespace retention. Audit, jobs, executions, unpublished delivery, and
-  artifact bytes require separate institutional retention procedures.
-- Automatic migrations are convenient for this development slice. A separate
-  least-privilege migration role and deployment workflow are required before
-  production use.
-- The PostgreSQL version shown above is the current CI target, not yet a
-  published support policy.
-- Production load/chaos, backup/restore, on-premises Slurm, and AWS
-  ParallelCluster acceptance have not been run in the department environment;
-  see the production-readiness review before treating this initial pass as a
-  supported service.
+[API guide]: docs/API.md
+[architecture guide]: docs/ARCHITECTURE.md
+[compatibility reference]: docs/COMPATIBILITY.md
+[configuration guide]: docs/CONFIGURATION.md
+[container guide]: docs/CONTAINERS.md
+[deployment guide]: docs/DEPLOYMENT.md
+[development guide]: docs/DEVELOPMENT.md
+[installation guide]: docs/INSTALLATION.md
+[issue tracker]: https://github.com/ryancswallace/jobman-control/issues
+[OpenAPI contract]: api/openapi-v1alpha1.yaml
+[operations guide]: docs/OPERATIONS.md
+[production-readiness review]: docs/PRODUCTION_READINESS.md
+[release guide]: RELEASE.md
+[security model]: docs/SECURITY_MODEL.md
+[security policy]: SECURITY.md
