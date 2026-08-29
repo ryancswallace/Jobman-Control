@@ -8,6 +8,7 @@ before:
     - go mod download
     - go mod verify
     - make contracts-check docs-check
+    - make release-changelog
 
 builds:
   - id: jobman-control
@@ -51,7 +52,8 @@ archives:
     files:
       - LICENSE
       - README.md
-      - CHANGELOG.md
+      - src: .release-generated/CHANGELOG.md
+        strip_parent: true
       - CITATION.cff
       - CODE_OF_CONDUCT.md
       - CONTRIBUTING.md

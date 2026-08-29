@@ -1,6 +1,7 @@
 # Build and test output
 bin/
 dist/
+.release-generated/
 coverage.*
 *.test
 generated-formula/

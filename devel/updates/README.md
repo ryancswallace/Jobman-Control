@@ -7,3 +7,8 @@ non-interactive, idempotent, and safe to rerun.
 `go-vers.sh` synchronizes the selected Go version across the module, linter,
 containers, devcontainer, workflows, and documentation. Container base-image
 tags are also digest-pinned; update the matching digest whenever a tag changes.
+
+`release-metadata.sh` synchronizes the changelog with reachable stable release
+tags. GoReleaser runs it against a release-local copy after semantic-release
+creates a tag; repository maintenance proposes the corresponding tracked
+changelog update after publication.

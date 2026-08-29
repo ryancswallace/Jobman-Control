@@ -11,7 +11,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ryancswallace/jobman-control/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ryancswallace/jobman-control)
 [![codecov](https://codecov.io/gh/ryancswallace/jobman-control/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman-control)
 
-Jobman Control is the planned shared control plane for
+Jobman Control is the pre-release shared control plane for
 [Jobman](https://github.com/ryancswallace/jobman). This repository is
 pre-release and currently implements named-host subprocess, Slurm,
 ParallelCluster target generations, S3/container admission, and transactional
@@ -123,8 +123,8 @@ It is not ready for production use.
 This repository remains the control-plane service: it never starts a
 subprocess, invokes Slurm, opens SSH, or executes workload content. The
 host-local `jobman-agent`, subprocess runner, and Slurm CLI adapter live in the
-Jobman repository and consume these APIs. That repository also provides the
-pre-release `jobman shared` client for target inspection, idempotent submission,
+Jobman repository and consume these APIs. Jobman v1.7.0 introduced the
+compatible `jobman shared` client for target inspection, idempotent submission,
 paginated job inspection, wait, cancellation, verified filesystem-log
 read/follow, artifact discovery, collection submit/show, graph
 submit/show/cancel, completed-history import, and client-side recovery of an
@@ -257,9 +257,11 @@ production secret-handling requirements.
 
 ## Contract ownership
 
-Jobman's `protocol/` directory is canonical. Until that package is available
-from a tagged Jobman module release, this repository carries a mechanically
-copied development snapshot under `contracts/jobman/v1alpha1/`.
+Jobman's `protocol/` directory is canonical. This repository carries a
+mechanically copied, checksummed snapshot under
+`contracts/jobman/v1alpha1/`, pinned to Jobman v1.7.0 and verified unchanged in
+v1.8.0. The source lock is recorded in
+`contracts/jobman/v1alpha1/SOURCE.md`.
 
 ```sh
 make contracts-source-check JOBMAN_DIR=../jobman
@@ -269,7 +271,8 @@ make contracts-sync JOBMAN_DIR=../jobman
 `contracts-source-check` detects drift from a neighboring Jobman checkout;
 `contracts-check` verifies the snapshot against its checked-in
 `checksums.txt` without requiring that checkout. Do not edit copied contract
-source, schemas, or fixtures in this repository.
+source, schemas, or fixtures in this repository. A refresh must originate in
+Jobman and record the exact tagged source version and commit.
 
 ## Validation
 

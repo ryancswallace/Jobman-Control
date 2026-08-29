@@ -58,7 +58,7 @@ dev-environment:
 release:
   - head-branch: ["^(?:release|prepare-release)(?:/|$)"]
   - changed-files:
-      - any-glob-to-any-file: ["CHANGELOG.md", "RELEASE.md", ".goreleaser.yml", ".github/workflows/release.yml", "Dockerfile.goreleaser"]
+      - any-glob-to-any-file: ["CHANGELOG.md", "RELEASE.md", ".releaserc", ".goreleaser.yml", ".github/workflows/release.yml", ".github/workflows/publish-staged-release.yml", ".github/workflows/repair-latest.yml", "devel/*release*.sh", "Dockerfile.goreleaser"]
 maintenance:
   - head-branch: ["^(?:chore|maintenance)(?:/|$)"]
   - changed-files:

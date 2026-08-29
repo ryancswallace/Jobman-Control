@@ -4,9 +4,6 @@ name: Jobman contract source
 on:
   push:
     branches: [main]
-    paths:
-      - "contracts/**"
-      - "devel/contractsync/**"
   schedule:
     - cron: "11 5 * * 4"
   workflow_dispatch:

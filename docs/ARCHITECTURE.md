@@ -30,9 +30,10 @@ desired actions, and artifact manifests.
 Jobman Diagnose remains a read-only interpretation companion. Control must not
 gain diagnostic model providers or target mutation through that project.
 
-The copied `contracts/jobman/v1alpha1` tree is a temporary, checksummed
-pre-release snapshot. Source changes originate in Jobman's `protocol/`
-directory. Control projects validated wire data into domain types so protocol
+The copied `contracts/jobman/v1alpha1` tree is a checksummed snapshot pinned to
+a tagged Jobman source release. Source changes originate in Jobman's
+`protocol/` directory, and the snapshot records the exact source version and
+commit. Control projects validated wire data into domain types so protocol
 implementation details do not spread into persistence and policy.
 
 ## State and consistency
