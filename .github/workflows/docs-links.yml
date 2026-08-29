@@ -51,6 +51,8 @@ jobs:
             --exclude '^https://securityscorecards\.dev/'
             --exclude '^https://codecov\.io/'
             --exclude '^https://github\.com/ryancswallace/jobman-control/actions/workflows/[^/]+/badge\.svg$'
+            --exclude '^https://github\.com/ryancswallace/jobman-control/compare/v0\.1\.0\.\.\.HEAD$'
+            --exclude '^https://github\.com/ryancswallace/jobman-control/releases/tag/v0\.1\.0$'
             --exclude '^https://token\.actions\.githubusercontent\.com/?$'
             './*.md'
             './docs/**/*.md'
