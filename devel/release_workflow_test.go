@@ -61,7 +61,8 @@ func TestReleaseRecoveryPublishesOnlyVerifiedDraft(t *testing.T) {
 func TestReleaseVerificationUsesMainWorkflowIdentity(t *testing.T) {
 	t.Parallel()
 
-	const identity = "https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/heads/main"
+	const identity = "https://github.com/ryancswallace/Jobman-Control/.github/workflows/release.yml@refs/heads/main"
+	const incorrectIdentity = "https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/heads/main"
 	for _, path := range []string{
 		"../.github/workflows/release.yml",
 		"../.github/workflows/publish-homebrew-formula.yml",
@@ -74,6 +75,9 @@ func TestReleaseVerificationUsesMainWorkflowIdentity(t *testing.T) {
 		if !strings.Contains(contents, identity) {
 			t.Errorf("%s is missing release workflow identity %q", path, identity)
 		}
+		if strings.Contains(contents, incorrectIdentity) {
+			t.Errorf("%s contains case-mismatched release workflow identity %q", path, incorrectIdentity)
+		}
 	}
 
 	for _, path := range []string{
@@ -81,8 +85,21 @@ func TestReleaseVerificationUsesMainWorkflowIdentity(t *testing.T) {
 		"publish-cloudsmith-packages.sh",
 	} {
 		contents := readReleaseFile(t, path)
+		if !strings.Contains(contents, "--signer-workflow ryancswallace/Jobman-Control/.github/workflows/release.yml") {
+			t.Errorf("%s is missing the canonical attestation signer workflow", path)
+		}
 		if strings.Contains(contents, "--source-ref \"refs/tags/") {
 			t.Errorf("%s still verifies tag-triggered attestations", path)
+		}
+	}
+
+	helper := readReleaseFile(t, "verify-publish-release.sh")
+	for _, required := range []string{
+		"--source-uri github.com/ryancswallace/Jobman-Control",
+		"git+https://github.com/ryancswallace/Jobman-Control@refs/heads/main",
+	} {
+		if !strings.Contains(helper, required) {
+			t.Errorf("release publication helper is missing canonical source identity %q", required)
 		}
 	}
 }

@@ -162,7 +162,7 @@ the protected environment's required reviewers. The certificate identity used
 for checksum and container verification is:
 
 ```text
-https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/heads/main
+https://github.com/ryancswallace/Jobman-Control/.github/workflows/release.yml@refs/heads/main
 ```
 
 The SLSA generator is referenced by the exact `v2.1.0` release tag because its
@@ -223,7 +223,7 @@ Download one archive, its checksum manifest, Sigstore bundle, and
 bundle against the `main` release-workflow identity above, verify the
 artifact's GitHub attestation with source ref `refs/heads/main`, and verify
 SLSA provenance against source URI
-`github.com/ryancswallace/jobman-control`.
+`github.com/ryancswallace/Jobman-Control`.
 
 Then perform a clean installation, migrate a restored disposable database,
 enroll a disposable agent, run one job, verify stdout and stderr manifests, and

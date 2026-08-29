@@ -160,7 +160,7 @@ fi
 cosign verify-blob \
 	--bundle "$download_dir/$signature_name" \
 	--certificate-identity \
-	'https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/heads/main' \
+	'https://github.com/ryancswallace/Jobman-Control/.github/workflows/release.yml@refs/heads/main' \
 	--certificate-oidc-issuer https://token.actions.githubusercontent.com \
 	"$download_dir/$checksum_name"
 (
@@ -170,7 +170,7 @@ cosign verify-blob \
 slsa-verifier verify-artifact \
 	"${artifact_paths[@]}" \
 	--provenance-path "$download_dir/jobman-control.intoto.jsonl" \
-	--source-uri github.com/ryancswallace/jobman-control \
+	--source-uri github.com/ryancswallace/Jobman-Control \
 	--source-branch main
 
 provenance_source=$(jq -er \
@@ -181,7 +181,7 @@ provenance_commit=$(jq -er \
 	'.dsseEnvelope.payload | @base64d | fromjson |
 	 .predicate.invocation.configSource.digest.sha1' \
 	"$download_dir/jobman-control.intoto.jsonl")
-expected_source='git+https://github.com/ryancswallace/jobman-control@refs/heads/main'
+expected_source='git+https://github.com/ryancswallace/Jobman-Control@refs/heads/main'
 if [[ "$provenance_source" != "$expected_source" ||
 	"$provenance_commit" != "$EXPECTED_SOURCE_COMMIT" ]]; then
 	die "SLSA provenance does not identify the approved source commit"
@@ -197,7 +197,7 @@ for image_tag in "$RELEASE_TAG" "${RELEASE_TAG#v}"; do
 done
 cosign verify \
 	--certificate-identity \
-	'https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/heads/main' \
+	'https://github.com/ryancswallace/Jobman-Control/.github/workflows/release.yml@refs/heads/main' \
 	--certificate-oidc-issuer https://token.actions.githubusercontent.com \
 	"${image}@${EXPECTED_IMAGE_DIGEST}"
 ./devel/container-smoke.sh \

@@ -37,7 +37,7 @@ manifest=${artifact_dir}/jobman-control_${version}_checksums.txt
 cosign verify-blob \
   --bundle "${manifest}.sigstore.json" \
   --certificate-identity \
-    "https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/heads/main" \
+    "https://github.com/ryancswallace/Jobman-Control/.github/workflows/release.yml@refs/heads/main" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   "${manifest}"
 
@@ -52,7 +52,7 @@ for architecture in 386 amd64 arm64; do
     (cd "${artifact_dir}" && sha256sum --check --ignore-missing "$(basename "${manifest}")") >/dev/null
     gh attestation verify "${package}" \
       --repo ryancswallace/jobman-control \
-      --signer-workflow ryancswallace/jobman-control/.github/workflows/release.yml \
+      --signer-workflow ryancswallace/Jobman-Control/.github/workflows/release.yml \
       --source-ref refs/heads/main >/dev/null
     digest=$(sha256sum "${package}" | awk '{print $1}')
     case ${format} in

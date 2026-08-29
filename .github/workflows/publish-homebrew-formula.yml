@@ -82,7 +82,7 @@ jobs:
           cosign verify-blob \
             --bundle "${manifest}.sigstore.json" \
             --certificate-identity \
-              "https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/heads/main" \
+              "https://github.com/ryancswallace/Jobman-Control/.github/workflows/release.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             "${manifest}"
           (
@@ -92,7 +92,7 @@ jobs:
           )
           for archive in generated-formula/jobman-control_*_darwin_*.tar.gz; do
             gh attestation verify "${archive}" --repo ryancswallace/jobman-control \
-              --signer-workflow ryancswallace/jobman-control/.github/workflows/release.yml \
+              --signer-workflow ryancswallace/Jobman-Control/.github/workflows/release.yml \
               --source-ref refs/heads/main >/dev/null
           done
           go run ./devel/homebrewformula -checksums "${manifest}" \
