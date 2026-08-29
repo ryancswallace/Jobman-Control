@@ -5,6 +5,8 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-29
+
 ## [0.1.0] - 2026-08-29
 
 ### Added
@@ -67,7 +69,8 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
   pre-v1. Replicas must run the same version, migrations are forward-only, and
   rollback across a migration requires the matching database backup and binary.
 
-[Unreleased]: https://github.com/ryancswallace/jobman-control/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman-control/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/ryancswallace/jobman-control/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ryancswallace/jobman-control/releases/tag/v0.1.0
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
