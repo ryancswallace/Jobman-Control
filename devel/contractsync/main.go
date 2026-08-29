@@ -1,4 +1,4 @@
-// Command contractsync copies or verifies the pre-release Jobman protocol snapshot.
+// Command contractsync copies or verifies the tagged Jobman protocol snapshot.
 package main
 
 import (

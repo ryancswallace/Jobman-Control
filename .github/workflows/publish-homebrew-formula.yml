@@ -2,8 +2,6 @@
 name: Publish Homebrew formula
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -20,9 +18,7 @@ permissions: read-all
 jobs:
   publish:
     name: Publish verified formula to Homebrew tap
-    if: >-
-      (github.event_name == 'release' && !github.event.release.prerelease) ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -36,12 +32,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || 'main' }}
+          ref: main
 
       - name: Validate published stable release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           if [[ ! "${RELEASE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "Expected a stable semantic version tag such as v0.1.0." >&2
@@ -74,7 +70,7 @@ jobs:
       - name: Generate formula from verified checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           mkdir -p generated-formula
           gh release download "${RELEASE_TAG}" --repo ryancswallace/jobman-control \
@@ -86,7 +82,7 @@ jobs:
           cosign verify-blob \
             --bundle "${manifest}.sigstore.json" \
             --certificate-identity \
-              "https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/tags/${RELEASE_TAG}" \
+              "https://github.com/ryancswallace/jobman-control/.github/workflows/release.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             "${manifest}"
           (
@@ -97,7 +93,7 @@ jobs:
           for archive in generated-formula/jobman-control_*_darwin_*.tar.gz; do
             gh attestation verify "${archive}" --repo ryancswallace/jobman-control \
               --signer-workflow ryancswallace/jobman-control/.github/workflows/release.yml \
-              --source-ref "refs/tags/${RELEASE_TAG}" >/dev/null
+              --source-ref refs/heads/main >/dev/null
           done
           go run ./devel/homebrewformula -checksums "${manifest}" \
             -output generated-formula/jobman-control.rb
@@ -124,7 +120,7 @@ jobs:
       - name: Propose verified formula
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           formula=generated-formula/jobman-control.rb
           test -s "${formula}"

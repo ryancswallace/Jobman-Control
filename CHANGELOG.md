@@ -50,7 +50,9 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
   with new shared IDs, provenance uniqueness, audit/outbox evidence, and no
   runnable state or bulk-byte migration.
 - Added reproducible development, documentation, security, coverage, container,
-  package, SBOM, signing, and release scaffolding, including an assembled
+  package, SBOM, signing, and tested-main release scaffolding, including
+  semantic version selection after the v0.1.0 bootstrap, isolated SLSA
+  provenance, exact-draft publication and recovery, and an assembled
   PostgreSQL-backed OIDC and agent mTLS release test.
 
 ### Known limitations
@@ -58,9 +60,9 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 - This initial release is intended for controlled development and integration
   testing; it is not approved or recommended for production deployment.
 - Jobman Control coordinates metadata and authorization but does not execute
-  workloads or transfer artifact bytes. The matching pre-release Jobman client
-  and agent are required for target-side subprocess, Slurm, container, SSH
-  bootstrap, NFS, and S3 effects.
+  workloads or transfer artifact bytes. The compatible Jobman client and agent,
+  introduced in Jobman v1.7.0, are required for target-side subprocess, Slurm,
+  container, SSH bootstrap, NFS, and S3 effects.
 - The API, portable workload snapshot, migrations, and operations contracts are
   pre-v1. Replicas must run the same version, migrations are forward-only, and
   rollback across a migration requires the matching database backup and binary.

@@ -2,8 +2,6 @@ cff-version: 1.2.0
 message: If you use Jobman Control, please cite this software.
 type: software
 title: Jobman Control
-version: 0.1.0
-date-released: 2026-08-29
 authors:
   - family-names: Wallace
     given-names: Ryan

@@ -19,8 +19,9 @@ projects:
   settings-as-code, CodeQL, dependency review, Scorecard, and maintenance CI;
 - CGO-free release archives, native Linux packages, SBOMs, checksums, Sigstore
   signatures, GitHub attestations, and a non-root multi-platform image; and
-- retained-draft release verification plus optional Homebrew and Cloudsmith
-  distribution workflows.
+- tested-main semantic release automation, isolated SLSA provenance,
+  retained-draft recovery, and optional Homebrew and Cloudsmith distribution
+  workflows.
 
 ## Control-specific additions
 
@@ -48,9 +49,11 @@ Some sibling-repository components do not belong in Control:
   PostgreSQL state, identity, and agent protocol instead.
 - Jobman Diagnose's report schemas, example captures, evaluation corpus, and
   diagnostic fixtures remain in the read-only diagnostic product.
-- Releases are maintainer-triggered semantic-version tags retained as drafts
-  for explicit verification. Automatic semantic-release publication is not
-  used while the API and forward-only database migrations are pre-v1.
+- The initial v0.1.0 tag is a one-time maintainer bootstrap because
+  semantic-release otherwise initializes an untagged repository at v1.0.0.
+  Later versions are calculated from Conventional Commits on tested `main`,
+  with protected-environment approval retained because the API and
+  forward-only database migrations are pre-v1.
 - A GitHub Pages site is deferred until Control has a stable operator-facing
   command or API surface that benefits from independently published reference
   material. Canonical documentation currently stays beside the code and

@@ -12,6 +12,8 @@ PROJECT := jobman-control
 MODULE := github.com/ryancswallace/jobman-control
 BIN_DIR := bin
 DIST_DIR := dist
+RELEASE_METADATA_DIR := .release-generated
+RELEASE_CHANGELOG := $(RELEASE_METADATA_DIR)/CHANGELOG.md
 COVERAGE_FILE := coverage.txt
 COVERAGE_MIN ?= 30
 JOBMAN_DIR ?= ../jobman
@@ -316,6 +318,11 @@ docker-run: docker-image ## Run the service image with caller-supplied flags.
 release-metadata-check: ## Verify metadata for RELEASE_TAG or the latest reachable stable tag.
 	RELEASE_TAG='$(RELEASE_TAG)' ./devel/check-release-metadata.sh
 
+.PHONY: release-changelog
+release-changelog: ## Render the tag-aware changelog embedded in release archives.
+	./devel/prepare-release-changelog.sh $(RELEASE_CHANGELOG)
+	@test -s $(RELEASE_CHANGELOG)
+
 .PHONY: release-check
 release-check: tool-goreleaser release-metadata-check ## Validate release configuration and metadata.
 	$(GORELEASER) check
@@ -358,5 +365,5 @@ update-all: update format ## Run maintenance and formatting.
 
 .PHONY: clean
 clean: ## Remove local build, coverage, and release output.
-	$(RM) -r $(BIN_DIR) $(DIST_DIR)
+	$(RM) -r $(BIN_DIR) $(DIST_DIR) $(RELEASE_METADATA_DIR)
 	$(RM) $(COVERAGE_FILE)

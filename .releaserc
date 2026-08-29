@@ -1,0 +1,21 @@
+---
+# After the one-time v0.1.0 bootstrap tag, semantic-release owns version
+# calculation, v-prefixed tags, and GitHub release notes. GoReleaser stages
+# artifacts in the resulting draft, which the release workflow verifies before
+# publication.
+branches:
+  - main
+
+tagFormat: "v${version}"
+
+# Listing plugins explicitly prevents the default npm publishing step from
+# running in this Go-only repository.
+plugins:
+  - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - - "@semantic-release/github"
+    - draftRelease: true
+      releaseNameTemplate: "<%= nextRelease.gitTag %>"
+      successCommentCondition: false
+      failCommentCondition: false
+      releasedLabels: false
