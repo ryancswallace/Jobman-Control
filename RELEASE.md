@@ -2,7 +2,7 @@
 
 Jobman Control releases are maintainer-triggered semantic-version tags staged
 as private drafts. This is deliberate while the API, migration, and operations
-contracts remain pre-v1. The first planned release is v0.1.0.
+contracts remain pre-v1. The initial release is v0.1.0.
 
 ## Candidate validation
 
@@ -10,6 +10,7 @@ From a clean checkout using the exact Go toolchain:
 
 ```console
 make setup
+make RELEASE_TAG=v0.1.0 release-metadata-check
 make check
 make snapshot
 make package-smoke
@@ -21,6 +22,10 @@ OIDC client plus one mTLS agent path. Confirm backup and restore procedures in
 [the operations guide](docs/OPERATIONS.md). A release must not depend on a
 sibling Jobman checkout; the checked-in contract snapshot and source record
 must be internally consistent.
+
+Set `RELEASE_TAG` to the exact candidate tag before tagging. This validates the
+dated changelog entry, canonical release link, and citation version even when
+the repository has no earlier stable tag.
 
 ## Publish
 

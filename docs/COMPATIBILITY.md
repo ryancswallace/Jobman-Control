@@ -1,7 +1,8 @@
 # Compatibility
 
-Jobman Control has not published a stable compatibility commitment. This table
-describes the tested pre-release slice rather than a permanent support policy.
+Jobman Control v0.1.0 does not establish a stable compatibility commitment.
+This table describes the tested pre-release slice rather than a permanent
+support policy.
 
 | Component | Current contract |
 | --- | --- |

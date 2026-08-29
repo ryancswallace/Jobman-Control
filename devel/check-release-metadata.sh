@@ -2,18 +2,38 @@
 
 set -eu
 
-latest=''
-for candidate in $(git tag --merged HEAD --list 'v*' --sort=-v:refname); do
-  if printf '%s\n' "${candidate}" \
-    | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
-    latest=${candidate}
-    break
+if [ "$#" -gt 1 ]; then
+  echo 'usage: check-release-metadata.sh [vMAJOR.MINOR.PATCH]' >&2
+  exit 2
+fi
+
+latest=${RELEASE_TAG:-}
+if [ "$#" -eq 1 ]; then
+  if [ -n "${latest}" ] && [ "${latest}" != "$1" ]; then
+    echo 'release tag argument conflicts with RELEASE_TAG' >&2
+    exit 2
   fi
-done
+  latest=$1
+fi
+
+if [ -z "${latest}" ]; then
+  for candidate in $(git tag --merged HEAD --list 'v*' --sort=-v:refname); do
+    if printf '%s\n' "${candidate}" \
+      | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+      latest=${candidate}
+      break
+    fi
+  done
+fi
 
 if [ -z "${latest}" ]; then
   echo 'No stable release tag is reachable; release metadata is not yet required.'
   exit 0
+fi
+if ! printf '%s\n' "${latest}" \
+  | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+  echo "release metadata tag must be a stable semantic version: ${latest}" >&2
+  exit 2
 fi
 
 version=${latest#v}

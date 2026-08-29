@@ -2,7 +2,7 @@
 
 Jobman Control is pre-release. Interfaces under `v1alpha1`, migrations,
 deployment procedures, and compatibility claims may still change. Support for
-unreleased `main` snapshots is best effort.
+v0.1.x evaluation releases and unreleased `main` snapshots is best effort.
 
 Issues and pull requests should include:
 

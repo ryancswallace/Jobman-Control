@@ -44,6 +44,7 @@ SYFT_VERSION_FILE := $(BIN_DIR)/.syft-$(SYFT_VERSION)
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || printf '%s' dev)
 COMMIT ?= $(shell git rev-parse --verify HEAD 2>/dev/null || printf '%s' unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+RELEASE_TAG ?=
 IMAGE ?= $(PROJECT):local
 GO_BUILD_FLAGS ?= -trimpath -mod=readonly
 GO_LDFLAGS ?= -s -w -buildid= \
@@ -205,7 +206,7 @@ unittest: test
 integration-test: ## Require and run PostgreSQL integration tests.
 	@test -n "$(JOBMAN_CONTROL_TEST_DATABASE_URL)" || \
 		(echo 'JOBMAN_CONTROL_TEST_DATABASE_URL is required.' >&2; exit 2)
-	$(GO) test -race -count=1 ./internal/store/postgres
+	$(GO) test -race -count=1 ./internal/store/postgres ./tests/e2e
 
 .PHONY: coverage coverage-check
 coverage: ## Write an atomic aggregate coverage profile.
@@ -312,8 +313,8 @@ docker-run: docker-image ## Run the service image with caller-supplied flags.
 	$(DOCKER) run --rm $(DOCKER_RUN_FLAGS) $(IMAGE)
 
 .PHONY: release-metadata-check
-release-metadata-check: ## Verify metadata for the latest reachable stable tag.
-	./devel/check-release-metadata.sh
+release-metadata-check: ## Verify metadata for RELEASE_TAG or the latest reachable stable tag.
+	RELEASE_TAG='$(RELEASE_TAG)' ./devel/check-release-metadata.sh
 
 .PHONY: release-check
 release-check: tool-goreleaser release-metadata-check ## Validate release configuration and metadata.

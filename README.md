@@ -11,7 +11,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ryancswallace/jobman-control/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ryancswallace/jobman-control)
 [![codecov](https://codecov.io/gh/ryancswallace/jobman-control/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman-control)
 
-Jobman Control is the planned shared control plane for
+Jobman Control is the pre-release shared control plane for
 [Jobman](https://github.com/ryancswallace/jobman). This repository is
 pre-release and currently implements named-host subprocess, Slurm,
 ParallelCluster target generations, S3/container admission, and transactional
