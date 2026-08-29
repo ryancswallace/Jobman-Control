@@ -9,7 +9,7 @@
 [![Test](https://github.com/ryancswallace/jobman-control/actions/workflows/test.yml/badge.svg)](https://github.com/ryancswallace/jobman-control/actions/workflows/test.yml)
 [![Codecov](https://codecov.io/gh/ryancswallace/jobman-control/branch/main/graph/badge.svg)](https://codecov.io/gh/ryancswallace/jobman-control)
 [![CodeQL](https://github.com/ryancswallace/jobman-control/actions/workflows/codeql.yml/badge.svg)](https://github.com/ryancswallace/jobman-control/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ryancswallace/jobman-control/badge)](https://scorecard.dev/viewer/?uri=github.com/ryancswallace/jobman-control)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ryancswallace/Jobman-Control/badge)](https://scorecard.dev/viewer/?uri=github.com/ryancswallace/Jobman-Control)
 [![Latest release](https://img.shields.io/github/v/release/ryancswallace/jobman-control?sort=semver)](https://github.com/ryancswallace/jobman-control/releases/latest)
 [![Go version](https://img.shields.io/github/go-mod/go-version/ryancswallace/jobman-control)](https://github.com/ryancswallace/jobman-control/blob/main/go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ryancswallace/jobman-control.svg)](https://pkg.go.dev/github.com/ryancswallace/jobman-control)
