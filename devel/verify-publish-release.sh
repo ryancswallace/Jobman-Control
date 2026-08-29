@@ -30,7 +30,7 @@ done
 : "${EXPECTED_IMAGE_DIGEST:?EXPECTED_IMAGE_DIGEST is required}"
 
 promote_latest=${PROMOTE_LATEST:-false}
-if [[ "$GITHUB_REPOSITORY" != "ryancswallace/jobman-control" ]]; then
+if [[ "$GITHUB_REPOSITORY" != "ryancswallace/Jobman-Control" ]]; then
 	die "refusing to publish an unexpected repository: $GITHUB_REPOSITORY"
 fi
 if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then

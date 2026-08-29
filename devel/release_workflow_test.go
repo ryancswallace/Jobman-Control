@@ -95,12 +95,16 @@ func TestReleaseVerificationUsesMainWorkflowIdentity(t *testing.T) {
 
 	helper := readReleaseFile(t, "verify-publish-release.sh")
 	for _, required := range []string{
+		`[[ "$GITHUB_REPOSITORY" != "ryancswallace/Jobman-Control" ]]`,
 		"--source-uri github.com/ryancswallace/Jobman-Control",
 		"git+https://github.com/ryancswallace/Jobman-Control@refs/heads/main",
 	} {
 		if !strings.Contains(helper, required) {
 			t.Errorf("release publication helper is missing canonical source identity %q", required)
 		}
+	}
+	if strings.Contains(helper, `[[ "$GITHUB_REPOSITORY" != "ryancswallace/jobman-control" ]]`) {
+		t.Error("release publication helper contains a case-mismatched repository guard")
 	}
 }
 
