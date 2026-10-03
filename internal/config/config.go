@@ -38,6 +38,8 @@ const (
 // Config contains validated service settings. DatabaseURL is secret-bearing
 // and must never be logged or returned by an endpoint.
 type Config struct {
+	DirectoryConfigFile      string
+	DirectoryMode            string
 	DelegationRegistryFile   string
 	DelegationClientCAFile   string
 	DelegationAuditRetention time.Duration
@@ -142,6 +144,8 @@ func load(lookup lookupEnvironment) (Config, error) {
 		return Config{}, retentionErr
 	}
 	configuration := Config{
+		DirectoryConfigFile:    strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE", "")),
+		DirectoryMode:          strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_MODE", "preview")),
 		DelegationRegistryFile: registryFile, DelegationClientCAFile: clientCAFile, DelegationAuditRetention: auditRetention,
 		DatabaseURL:              databaseURL,
 		ListenAddress:            listenAddress,
@@ -176,6 +180,12 @@ func load(lookup lookupEnvironment) (Config, error) {
 	}
 	if authModeErr := validateAuthentication(lookup, &configuration); authModeErr != nil {
 		return Config{}, authModeErr
+	}
+	if configuration.DirectoryMode != "preview" && configuration.DirectoryMode != "enforce" {
+		return Config{}, errors.New("directory mode must be preview or enforce")
+	}
+	if configuration.DirectoryConfigFile != "" && (configuration.AuthMode != AuthModeOIDC || configuration.TLSCertificateFile == "") {
+		return Config{}, errors.New("directory authorization requires production OIDC and server TLS")
 	}
 
 	return configuration, nil

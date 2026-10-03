@@ -7,6 +7,10 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Authenticated LDAPS reconciliation of direct AD group contributions, approved
+  preserved-principal aliases, versioned configuration preview/transition,
+  complete range validation, atomic revocation/audit, and recovery fencing.
+
 - Certificate-bound, pinned read-only service delegation with replay/audit
   records, approved directory alias binding, managed-namespace freshness checks,
   and repository-level mutation denial. Job envelopes expose actual read times.

@@ -25,6 +25,10 @@
     "/\\b[0-9a-f]{32,}\\b/g"
   ],
   "words": [
+	"LDAPS",
+	"ntlmssp",
+	"FILETIME",
+	"ERRCODE",
     "hashtextextended",
     "actionlint",
     "addgroup",

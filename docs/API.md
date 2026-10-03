@@ -94,9 +94,9 @@ overlap other indicators. Collection/graph children are jobs; wrappers are not
 added to counts. Omitted map keys mean zero in the complete authorized snapshot.
 Later drill-downs are live queries and can reflect subsequent job transitions.
 
-These additive monitoring capabilities do not claim full Dashboard integration:
-source delegation, directory freshness, bounded group catalogs, event feeds,
-shared evidence, and bulk log delivery remain separate implementation work.
+Delegation, directory authorization, and bounded group catalogs are documented
+in their linked contracts. Event feeds, shared evidence, and bulk log delivery
+remain separate implementation work.
 Migration 000014 uses the existing forward-only ledger; older binaries reject the
 newer schema. Back up before upgrading and use a controlled restore for rollback.
 
@@ -213,4 +213,6 @@ These additive routes keep legacy complete group documents compatible.
 
 See [Read-only service delegation](DELEGATION.md) for the exact mTLS/JWT route
 matrix, replay protection, current-authority checks, and directory proof fields.
+See [Active Directory authorization](DIRECTORY.md) for authoritative direct-group
+reconciliation, operator mapping/transition, and stale-proof failure behavior.
 Job and job-list responses include a database transaction `asOf` timestamp.

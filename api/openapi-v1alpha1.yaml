@@ -1438,7 +1438,9 @@ components:
               authorizationCheckedAt: {type: string, format: date-time}
               lastDirectoryVerifiedAt: {type: string, format: date-time}
               authorizationExpiresAt: {type: string, format: date-time}
-              authorizationStatus: {enum: [verified]}
+              authorizationStatus:
+                enum: [verified]
+                description: Independently verified direct directory authority; expires after 120 seconds without complete reconciliation.
               authorizationVersion: {type: string, pattern: "^[1-9][0-9]*$"}
         nextPageToken: {type: string}
     MembershipGrantRequest:

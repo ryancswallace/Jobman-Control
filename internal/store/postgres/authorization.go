@@ -72,6 +72,9 @@ func authorizeNamespace(
 	if managed && !fresh {
 		return authorization, domain.ErrAuthorizationUnavailable
 	}
+	if managed && slices.Contains(capabilities, domain.CapabilityMembershipsManage) {
+		return authorization, domain.ErrForbidden
+	}
 	authorization.canonical = principal
 
 	authorization.capabilities = domain.EffectiveCapabilities(roles)

@@ -7,9 +7,9 @@ directory verification. This implementation does not turn a Dashboard assertion
 into an identity-provisioning or membership-administration request.
 
 The `read-delegation` capability identifies the implemented wire and repository
-boundary. Live directory reconciliation is a separate feature; clients must
-require `directory-authorization` before enabling production Dashboard access.
-The latter is not advertised by this slice. Ordinary OIDC clients and unmanaged
+boundary. [Live directory reconciliation](DIRECTORY.md) is configured separately;
+clients require `directory-authorization` and fresh per-namespace verification
+before enabling production Dashboard access. Ordinary OIDC clients and unmanaged
 namespaces preserve their existing behavior.
 
 ## Wire contract

@@ -39,6 +39,7 @@ submit work, enforce policy, and track results.
 | Coordination | Idempotent submission, namespace quotas, fair dispatch, cancellation, collections, Slurm arrays, and dependency graphs |
 | Agent trust | One-time enrollment, mTLS certificates, rotating sessions, generation pinning, and replay-safe assignment acceptance |
 | Identity | OIDC users, bounded namespace discovery, contributing role grants, and exact capability unions |
+| Directory authority | [Verified direct AD membership](docs/DIRECTORY.md), approved alias mapping, atomic revocation, and freshness enforcement |
 | Results | Ordered execution events plus checksummed log and artifact manifests for local filesystems, NFS, and S3 |
 | Operations | Readiness, bounded Prometheus metrics, audit export, retention policy, restore holds, and completed-history import |
 

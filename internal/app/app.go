@@ -17,6 +17,7 @@ import (
 	"github.com/ryancswallace/jobman-control/internal/agentca"
 	"github.com/ryancswallace/jobman-control/internal/auth"
 	"github.com/ryancswallace/jobman-control/internal/config"
+	"github.com/ryancswallace/jobman-control/internal/directory"
 	"github.com/ryancswallace/jobman-control/internal/domain"
 	"github.com/ryancswallace/jobman-control/internal/httpapi"
 	"github.com/ryancswallace/jobman-control/internal/store/postgres"
@@ -49,6 +50,25 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		return fmt.Errorf("verify database migrations: %w", err)
 	}
 	store := postgres.New(pool, configuration.AgentTokenKey)
+	var directoryConfig *directory.Config
+	if configuration.DirectoryConfigFile != "" {
+		loaded, loadErr := directory.Load(configuration.DirectoryConfigFile)
+		if loadErr != nil {
+			return loadErr
+		}
+		plan, planErr := store.PlanDirectory(startupContext, loaded.Mapping)
+		if planErr != nil {
+			return fmt.Errorf("validate directory transition: %w", planErr)
+		}
+		logger.InfoContext(ctx, "Directory configuration plan", "source-id", plan.SourceID, "revision", plan.Revision, "namespaces", plan.NamespaceCount, "new-managed-namespaces", plan.NewManagedNamespaces, "retained-non-directory-grants", plan.RetainedNonDirectoryGrants, "identities", plan.IdentityCount, "bindings", plan.BindingCount)
+		if configuration.DirectoryMode == "preview" {
+			return nil
+		}
+		if err = store.ConfigureDirectory(startupContext, loaded.Mapping); err != nil {
+			return fmt.Errorf("configure directory authority: %w", err)
+		}
+		directoryConfig = &loaded
+	}
 	var certificateAuthority *agentca.Authority
 	if configuration.AgentCACertificateFile != "" {
 		certificateAuthority, err = agentca.Load(
@@ -140,6 +160,9 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 	go runCoordinator(
 		ctx, logger, store, configuration.CoordinatorInterval, configuration.AgentStaleAfter, configuration.DelegationAuditRetention,
 	)
+	if directoryConfig != nil {
+		go runDirectory(ctx, logger, store, *directoryConfig)
+	}
 	logger.InfoContext(
 		ctx, "Jobman Control API is listening",
 		"address", listener.Addr().String(), "auth-mode", configuration.AuthMode,
@@ -226,6 +249,7 @@ type assignmentReconciler interface {
 	ReconcileStaleExecutions(context.Context, time.Duration, int) (int, error)
 	PruneOperationalData(context.Context, int) (int, error)
 	PruneDelegationAudits(context.Context, int, time.Duration) (int, error)
+	PruneDirectoryAudits(context.Context, int, time.Duration) (int, error)
 }
 
 func runCoordinator(
@@ -262,6 +286,9 @@ func runCoordinator(
 		}
 		if _, auditErr := reconciler.PruneDelegationAudits(ctx, 256, auditRetention); auditErr != nil && !errors.Is(auditErr, context.Canceled) {
 			logger.ErrorContext(ctx, "delegation audit retention failed")
+		}
+		if _, auditErr := reconciler.PruneDirectoryAudits(ctx, 256, auditRetention); auditErr != nil && !errors.Is(auditErr, context.Canceled) {
+			logger.ErrorContext(ctx, "directory audit retention failed")
 		}
 		select {
 		case <-ctx.Done():

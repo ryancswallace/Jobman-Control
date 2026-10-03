@@ -221,4 +221,18 @@ func TestDelegationConfigurationRequiresVerifiedTransport(t *testing.T) {
 	if _, err = load(mapLookup(baseline)); err == nil {
 		t.Fatal("short audit retention accepted")
 	}
+	delete(baseline, "JOBMAN_CONTROL_DELEGATION_AUDIT_RETENTION")
+	baseline["JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE"] = "directory.json"
+	configuration, err = load(mapLookup(baseline))
+	if err != nil || configuration.DirectoryMode != "preview" {
+		t.Fatalf("directory preview default=%#v,%v", configuration, err)
+	}
+	baseline["JOBMAN_CONTROL_DIRECTORY_MODE"] = "enforce"
+	if _, err = load(mapLookup(baseline)); err != nil {
+		t.Fatalf("directory enforcement=%v", err)
+	}
+	baseline["JOBMAN_CONTROL_DIRECTORY_MODE"] = "unsafe"
+	if _, err = load(mapLookup(baseline)); err == nil {
+		t.Fatal("unknown directory mode accepted")
+	}
 }
