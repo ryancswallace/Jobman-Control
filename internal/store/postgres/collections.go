@@ -275,7 +275,7 @@ func (store *Store) GetCollection(
 	namespace, collectionID string,
 ) (domain.Collection, error) {
 	collection, err := scanCollection(store.pool.QueryRow(ctx, collectionSelect+`
-		JOIN memberships AS m ON m.namespace_id = n.id
+		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND c.id = $4
 		GROUP BY c.id, n.name

@@ -248,7 +248,7 @@ func (store *Store) GetGraph(
 	namespace, graphID string,
 ) (domain.Graph, error) {
 	graph, err := scanGraph(store.pool.QueryRow(ctx, graphSelect+`
-		JOIN memberships AS m ON m.namespace_id = n.id
+		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND g.id = $4
 		GROUP BY g.id, n.name
@@ -529,7 +529,7 @@ func (store *Store) CancelGraph(
 			return domain.Graph{}, fmt.Errorf("lock graph cancellation: %w", queryErr)
 		}
 		if ownerID != authorization.principalID &&
-			!slices.Contains([]string{domain.RoleOperator, domain.RoleNamespaceAdmin}, authorization.role) {
+			!authorization.permits(domain.CapabilityJobsCancelAny) {
 			return domain.Graph{}, domain.ErrForbidden
 		}
 		resourceID, replayed, reserveErr := reserveIdempotency(

@@ -40,12 +40,12 @@ func (store *Store) CreateEnrollmentToken(
 	result, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.EnrollmentToken, error) {
 		authorization, authorizeErr := authorizeNamespace(
 			ctx, tx, actor, namespace,
-			domain.RoleSubmitter, domain.RoleOperator, domain.RoleNamespaceAdmin,
+			domain.CapabilityEnrollmentCreateOwn,
 		)
 		if authorizeErr != nil {
 			return domain.EnrollmentToken{}, authorizeErr
 		}
-		if authorization.role != domain.RoleNamespaceAdmin && request.Principal != actor {
+		if !authorization.permits(domain.CapabilityEnrollmentCreateAny) && request.Principal != actor {
 			return domain.EnrollmentToken{}, domain.ErrForbidden
 		}
 		resourceID, replayed, reserveErr := reserveIdempotency(
@@ -82,7 +82,7 @@ func (store *Store) CreateEnrollmentToken(
 		if queryErr := tx.QueryRow(ctx, `
 			SELECT p.id::text
 			FROM principals AS p
-			JOIN memberships AS m ON m.principal_id = p.id
+			JOIN authorized_memberships AS m ON m.principal_id = p.id
 			WHERE m.namespace_id = $1 AND p.issuer = $2 AND p.subject = $3
 		`, authorization.namespaceID, request.Principal.Issuer, request.Principal.Subject).
 			Scan(&enrolledPrincipalID); queryErr != nil {
