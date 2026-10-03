@@ -138,9 +138,6 @@ func (store *Store) ConfigureDirectory(ctx context.Context, mapping domain.Direc
 		if _, e = tx.Exec(ctx, `UPDATE directory_accounts SET enabled=false,last_verified_at=NULL WHERE source_id=$1`, mapping.SourceID); e != nil {
 			return struct{}{}, e
 		}
-		if _, e = tx.Exec(ctx, `DELETE FROM principal_aliases WHERE source_id=$1`, mapping.SourceID); e != nil {
-			return struct{}{}, e
-		}
 		for _, binding := range mapping.Bindings {
 			if _, e = tx.Exec(ctx, `INSERT INTO directory_role_bindings(group_id,namespace_id,role) VALUES($1,$2,$3)
  ON CONFLICT(group_id) DO UPDATE SET namespace_id=EXCLUDED.namespace_id,role=EXCLUDED.role,enabled=true,revision=directory_role_bindings.revision+1,updated_at=transaction_timestamp()`, binding.GroupID, binding.NamespaceID, binding.Role); e != nil {
@@ -154,6 +151,13 @@ func (store *Store) ConfigureDirectory(ctx context.Context, mapping domain.Direc
 			if _, e = tx.Exec(ctx, `INSERT INTO directory_accounts(directory_id,principal_id,source_id) VALUES($1,$2,$3) ON CONFLICT(directory_id) DO UPDATE SET source_id=EXCLUDED.source_id,enabled=false,last_verified_at=NULL`, identity.DirectoryID, identity.PrincipalID, mapping.SourceID); e != nil {
 				return struct{}{}, e
 			}
+		}
+		// The approved map is authoritative for all adopted accounts, including
+		// legacy operator aliases with NULL source provenance. Recreate only the
+		// declared aliases after independent directory verification.
+		if _, e = tx.Exec(ctx, `WITH removed AS(DELETE FROM principal_aliases a WHERE a.source_id=$1 OR a.directory_id IN(SELECT directory_id FROM directory_accounts WHERE source_id=$1) RETURNING directory_id,principal_id,issuer,subject)
+ INSERT INTO directory_audit_events(source_id,action,details) SELECT $1,'alias.removed',jsonb_build_object('directoryId',directory_id,'principalId',principal_id,'issuer',issuer,'subject',subject) FROM removed`, mapping.SourceID); e != nil {
+			return struct{}{}, e
 		}
 		if _, e = tx.Exec(ctx, `INSERT INTO directory_audit_events(source_id,action,details) VALUES($1,'configuration.applied',jsonb_build_object('revision',$2::bigint,'digest',$3::text,'namespaceCount',$4::int,'identityCount',$5::int))`, mapping.SourceID, mapping.Revision, digest, len(mapping.Namespaces), len(mapping.Identities)); e != nil {
 			return struct{}{}, e

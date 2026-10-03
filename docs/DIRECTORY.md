@@ -20,6 +20,9 @@ aliases. Explicit new principal UUIDs are supported, but an existing principal
 or alias cannot be assigned to a different identity. No email or display-name
 match is used. Configuration conflicts fail before changing authority. Database
 constraints also protect aliases from concurrent ordinary principal creation.
+The declared alias set replaces every earlier alias for an adopted account,
+including legacy aliases without source provenance. Omitted aliases are removed
+and audited; later configuration revisions cannot silently retain a removed alias.
 
 The reader looks up each approved user object and its current eligibility, then
 all configured groups' explicit `member` values. It uses a single authenticated
@@ -32,6 +35,11 @@ after retrieval invalidate the entire snapshot. Read behavior follows
 [Microsoft's range retrieval contract](https://learn.microsoft.com/en-us/windows/win32/adsi/attribute-range-retrieval).
 User object versions and distinguished names are rechecked after group reads so
 a concurrent rename or reused name cannot assign another user's memberships.
+The client enforces entry limits even if the server ignores them. Before BER
+decoding, each response is limited to two MiB, each connection to 32 MiB, and
+constructed nesting/element counts are bounded. Oversized or malformed responses
+fail the cycle without refreshing proof. Definite-length framing follows
+[LDAP protocol encoding](https://www.rfc-editor.org/rfc/rfc4511#section-5.1).
 
 Only configured, resolved user objects can confer access. Nested groups,
 unmapped users, and foreign-domain members produce a bounded operator count and

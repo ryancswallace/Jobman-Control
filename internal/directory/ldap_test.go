@@ -27,6 +27,9 @@ type scriptedSearch struct {
 }
 
 func (s *scriptedSearch) Search(request *ldap.SearchRequest) (*ldap.SearchResult, error) {
+	if !request.EnforceSizeLimit {
+		return nil, errors.New("directory search lacks enforced entry bound")
+	}
 	if len(s.calls) == 0 {
 		return nil, errors.New("unexpected query")
 	}

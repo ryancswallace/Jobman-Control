@@ -54,7 +54,7 @@ func (reader Reader) Read(ctx context.Context, epoch int64) (domain.DirectorySna
 	if err != nil {
 		return domain.DirectorySnapshot{}, errors.New("directory TLS connection failed")
 	}
-	connection := ldap.NewConn(transport, true)
+	connection := ldap.NewConn(&boundedLDAPConnection{Conn: transport, remaining: maximumDirectoryBytes}, true)
 	connection.Start()
 	defer func() { _ = connection.Close() }()
 	stop := context.AfterFunc(ctx, func() { _ = connection.Close() })
@@ -168,7 +168,9 @@ func findObject(connection searcher, base, id, prefix string, attributes []strin
 		return nil, err
 	}
 	filter := prefix + "(objectGUID=" + ldap.EscapeFilter(string(guid)) + "))"
-	result, err := connection.Search(ldap.NewSearchRequest(base, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 2, 5, false, filter, attributes, nil))
+	request := ldap.NewSearchRequest(base, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 2, 5, false, filter, attributes, nil)
+	request.EnforceSizeLimit = true
+	result, err := connection.Search(request)
 	if err != nil || result == nil || len(result.Referrals) > 0 || len(result.Entries) > 1 {
 		return nil, errors.New("directory object query is incomplete")
 	}
@@ -218,7 +220,9 @@ func readGroup(connection searcher, base, id string) (values []string, exists bo
 			break
 		}
 		next += len(values)
-		result, queryErr := connection.Search(ldap.NewSearchRequest(entry.DN, ldap.ScopeBaseObject, ldap.NeverDerefAliases, 1, 5, false, "(objectClass=group)", []string{"objectGUID", "uSNChanged", fmt.Sprintf("member;range=%d-%d", next, next+999)}, nil))
+		request := ldap.NewSearchRequest(entry.DN, ldap.ScopeBaseObject, ldap.NeverDerefAliases, 1, 5, false, "(objectClass=group)", []string{"objectGUID", "uSNChanged", fmt.Sprintf("member;range=%d-%d", next, next+999)}, nil)
+		request.EnforceSizeLimit = true
+		result, queryErr := connection.Search(request)
 		if queryErr != nil || result == nil || len(result.Referrals) > 0 || len(result.Entries) != 1 {
 			return nil, false, errors.New("directory group range query is incomplete")
 		}
