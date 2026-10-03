@@ -146,6 +146,29 @@ func TestDelegatedAuthorityIntegration(t *testing.T) {
 	if _, err = pool.Exec(ctx, `UPDATE namespace_directory_state SET last_verified_at=statement_timestamp(); UPDATE directory_accounts SET last_verified_at=statement_timestamp()`); err != nil {
 		t.Fatal(err)
 	}
+	// A restored replay ledger can omit a consumed assertion. Re-verifying the
+	// directory must not make that still-unexpired pre-recovery assertion usable.
+	if _, err = pool.Exec(ctx, `DELETE FROM delegation_assertions`); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.AcceptDelegationAssertion(ctx, principal); !errors.Is(err, domain.ErrAuthorizationUnavailable) {
+		t.Fatalf("pre-recovery assertion replay after fresh directory proof=%v", err)
+	}
+	var futureFloor bool
+	if err = pool.QueryRow(ctx, `SELECT delegation_issued_after>statement_timestamp() FROM service_recovery_state`).Scan(&futureFloor); err != nil || !futureFloor {
+		t.Fatalf("restore did not include future assertion clock skew: %v,%v", futureFloor, err)
+	}
+	// Simulate the end of the recovery clock-skew interval without a test sleep.
+	if _, err = pool.Exec(ctx, `UPDATE service_recovery_state SET delegation_issued_after=statement_timestamp()-interval '1 second'`); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT statement_timestamp()`).Scan(&principal.Delegation.IssuedAt); err != nil {
+		t.Fatal(err)
+	}
+	principal.Delegation.ExpiresAt = principal.Delegation.IssuedAt.Add(time.Minute)
+	if err = store.AcceptDelegationAssertion(ctx, principal); err != nil {
+		t.Fatalf("new post-recovery assertion=%v", err)
+	}
 
 	if _, err = pool.Exec(ctx, `UPDATE membership_grants SET revoked_at=statement_timestamp() WHERE provenance='directory'`); err != nil {
 		t.Fatal(err)

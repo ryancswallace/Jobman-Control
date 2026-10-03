@@ -152,6 +152,7 @@ func resolveDelegatedPrincipal(ctx context.Context, tx pgx.Tx, principal domain.
 	err = tx.QueryRow(ctx, `SELECT account.principal_id::text,p.issuer,p.subject,account.enabled,COALESCE(account.last_verified_at,'epoch'::timestamptz),
  COALESCE(account.last_verified_at<=statement_timestamp()+interval '5 seconds' AND account.last_verified_at>statement_timestamp()-interval '120 seconds',false),
  $4::timestamptz<=statement_timestamp()+interval '5 seconds' AND $5::timestamptz>statement_timestamp()-interval '5 seconds'
+ AND $4::timestamptz>(SELECT delegation_issued_after FROM service_recovery_state WHERE singleton)
  FROM principal_aliases AS alias JOIN directory_accounts AS account ON account.directory_id=alias.directory_id AND account.principal_id=alias.principal_id
  JOIN principals AS p ON p.id=account.principal_id
  WHERE alias.issuer=$1 AND alias.subject=$2 AND alias.directory_id=$3`, principal.Issuer, principal.Subject, actor.DirectoryID, actor.IssuedAt, actor.ExpiresAt).Scan(&result.principalID, &result.canonical.Issuer, &result.canonical.Subject, &enabled, &result.verifiedAt, &fresh, &validTime)

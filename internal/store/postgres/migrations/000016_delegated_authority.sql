@@ -97,14 +97,18 @@ $$;
 CREATE TRIGGER directory_namespace_versions AFTER INSERT ON namespace_directory_state
  FOR EACH ROW EXECUTE FUNCTION bump_directory_namespace_versions();
 -- Restored grants must be independently verified again before being served.
+ALTER TABLE service_recovery_state ADD COLUMN delegation_issued_after timestamptz NOT NULL DEFAULT 'epoch';
 CREATE FUNCTION invalidate_directory_proof_after_restore() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF OLD.restore_epoch IS DISTINCT FROM NEW.restore_epoch THEN
+  -- Previously consumed assertions may be absent from a restored replay ledger.
+  -- Include the maximum permitted future clock skew in the issuance floor.
+  NEW.delegation_issued_after := statement_timestamp()+interval '5 seconds';
   UPDATE directory_accounts SET last_verified_at=NULL;
   UPDATE namespace_directory_state SET last_verified_at=NULL,last_error_code='restore_reverification_required';
  END IF;
  RETURN NEW;
 END;
 $$;
-CREATE TRIGGER directory_restore_proof AFTER UPDATE OF restore_epoch ON service_recovery_state
+CREATE TRIGGER directory_restore_proof BEFORE UPDATE OF restore_epoch ON service_recovery_state
  FOR EACH ROW EXECUTE FUNCTION invalidate_directory_proof_after_restore();

@@ -47,7 +47,10 @@ Assertions cannot outlive their certificate. Keep Control, PostgreSQL, Dashboard
 and the directory synchronized to trusted time. A stale/future directory proof
 or inconsistent database clock fails closed. Incrementing the recovery epoch
 after restore invalidates every directory proof until independent verification
-completes again.
+completes again. It also requires assertions issued strictly after the recovery
+time plus five seconds, so an assertion consumed after the backup cannot replay
+against a restored ledger. Mint a new assertion after that short clock-skew
+interval; refreshed directory proof alone cannot revive an older assertion.
 
 An assertion is consumed once through a unique `(service_id, assertion_id)`
 record. Retrying a request requires minting a new assertion. The audit record
