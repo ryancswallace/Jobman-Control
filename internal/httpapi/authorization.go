@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/base64"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -26,7 +27,11 @@ type principalIdentity struct {
 }
 
 func (service *api) currentPrincipal(writer http.ResponseWriter, request *http.Request, principal domain.Principal) {
-	query := request.URL.Query()
+	query, parseErr := url.ParseQuery(request.URL.RawQuery)
+	if parseErr != nil {
+		writeError(writer, http.StatusBadRequest, "invalid_request", "namespace discovery query is invalid")
+		return
+	}
 	limit := domain.DefaultJobListLimit
 	afterID := ""
 	for key, values := range query {
