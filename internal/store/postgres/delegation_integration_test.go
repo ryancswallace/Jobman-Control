@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/ryancswallace/jobman/diagnostic"
 
 	"github.com/ryancswallace/jobman-control/internal/domain"
 )
@@ -62,7 +63,7 @@ func TestDelegatedAuthorityIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	fingerprint := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
-	registration := domain.DelegationKey{ServiceID: "dashboard", KeyID: "key-one", Audience: "control-audience", PublicKey: make([]byte, 32), CertificateThumbprints: []string{fingerprint}, NamespaceIDs: []string{namespaceID}, Operations: []string{domain.CapabilityNamespaceRead, domain.CapabilityJobsRead, domain.CapabilityGroupsRead, domain.CapabilityTargetsRead, domain.CapabilityLogsRead, domain.CapabilityArtifactsRead}, Enabled: true}
+	registration := domain.DelegationKey{ServiceID: "dashboard", KeyID: "key-one", Audience: "control-audience", PublicKey: make([]byte, 32), CertificateThumbprints: []string{fingerprint}, NamespaceIDs: []string{namespaceID}, Operations: []string{domain.CapabilityNamespaceRead, domain.CapabilityJobsRead, domain.CapabilityGroupsRead, domain.CapabilityTargetsRead, domain.CapabilityLogsRead, domain.CapabilityArtifactsRead, domain.CapabilityEvidenceRead}, Enabled: true}
 	if err = store.RegisterDelegationKeys(ctx, []domain.DelegationKey{registration}); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +102,24 @@ func TestDelegatedAuthorityIntegration(t *testing.T) {
 	if _, catalogErr = store.GetTargetSnapshot(ctx, principal, "research", catalog.Items[0].ID); !errors.Is(catalogErr, domain.ErrForbidden) {
 		t.Fatalf("target detail operation bypass=%v", catalogErr)
 	}
+	deploymentID := "78000000-0000-4000-8000-000000000001"
+	if err = store.EnableDiagnosticSnapshots(deploymentID); err != nil {
+		t.Fatal(err)
+	}
+	source, sourceErr := store.Capabilities(ctx)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
+	selection := diagnostic.SharedSelection{DeploymentID: deploymentID, ControlInstanceID: source.InstanceID, NamespaceID: namespaceID, JobID: job.ID}
+	if _, snapshotErr := store.ReadDiagnosticSnapshot(ctx, principal, "research", selection); !errors.Is(snapshotErr, domain.ErrForbidden) {
+		t.Fatalf("diagnostic wrong operation=%v", snapshotErr)
+	}
+	principal.Delegation.Operation = domain.CapabilityEvidenceRead
+	diagnosticSnapshot, snapshotErr := store.ReadDiagnosticSnapshot(ctx, principal, "research", selection)
+	if snapshotErr != nil || diagnosticSnapshot.AuthorizationExpiresAt == nil || diagnosticSnapshot.AuthorizationVersion < 1 || diagnosticSnapshot.Snapshot.Job.ID != job.ID {
+		t.Fatalf("delegated diagnostic=%#v,%v", diagnosticSnapshot, snapshotErr)
+	}
+	principal.Delegation.Operation = domain.CapabilityJobsRead
 	// Even a represented namespace administrator cannot mutate through delegation.
 	if _, manifestErr := store.ListLogChunks(ctx, principal, "research", job.ID, domain.LogChunkOptions{Stream: "stdout", Limit: 1}); !errors.Is(manifestErr, domain.ErrForbidden) {
 		t.Fatalf("manifest operation bypass=%v", manifestErr)
@@ -142,6 +161,11 @@ func TestDelegatedAuthorityIntegration(t *testing.T) {
 	if _, err = store.GetJob(ctx, principal, "research", job.ID); !errors.Is(err, domain.ErrAuthorizationUnavailable) {
 		t.Fatalf("stale directory account=%v", err)
 	}
+	principal.Delegation.Operation = domain.CapabilityEvidenceRead
+	if _, snapshotErr = store.ReadDiagnosticSnapshot(ctx, principal, "research", selection); !errors.Is(snapshotErr, domain.ErrAuthorizationUnavailable) {
+		t.Fatalf("diagnostic stale account=%v", snapshotErr)
+	}
+	principal.Delegation.Operation = domain.CapabilityJobsRead
 	if _, err = pool.Exec(ctx, `UPDATE directory_accounts SET last_verified_at=statement_timestamp() WHERE directory_id=$1`, directoryID); err != nil {
 		t.Fatal(err)
 	}

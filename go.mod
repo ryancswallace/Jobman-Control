@@ -1,6 +1,6 @@
 module github.com/ryancswallace/jobman-control
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
@@ -8,6 +8,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/ryancswallace/jobman v1.8.1-0.20261003211041-62ac89b14547
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 )
 

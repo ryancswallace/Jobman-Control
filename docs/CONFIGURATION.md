@@ -56,3 +56,7 @@ fails if migrations are pending, changed, or unknown to the binary.
 See [`etc/jobman-control/jobman-control.env.example`](../etc/jobman-control/jobman-control.env.example)
 for placeholders. That file is not usable until every value is replaced and
 the resulting file is stored privately outside version control.
+
+The optional `JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID` is the immutable Dashboard
+registry source UUID. Configuring it enables `shared-diagnostic-snapshots`; all
+replicas must preserve this identity. See [Shared diagnostic snapshots](DIAGNOSTIC_SNAPSHOTS.md).

@@ -50,6 +50,9 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		return fmt.Errorf("verify database migrations: %w", err)
 	}
 	store := postgres.New(pool, configuration.AgentTokenKey)
+	if diagnosticErr := store.EnableDiagnosticSnapshots(configuration.DiagnosticDeploymentID); diagnosticErr != nil {
+		return diagnosticErr
+	}
 	var directoryConfig *directory.Config
 	if configuration.DirectoryConfigFile != "" {
 		loaded, loadErr := directory.Load(configuration.DirectoryConfigFile)

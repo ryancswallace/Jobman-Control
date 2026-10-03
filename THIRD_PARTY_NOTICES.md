@@ -10,6 +10,7 @@ graphs:
 - [ASN.1 BER](https://github.com/go-asn1-ber/asn1-ber), MIT License.
 - [pgx](https://github.com/jackc/pgx), MIT License.
 - [jsonschema](https://github.com/santhosh-tekuri/jsonschema), MIT License.
+- [Jobman public diagnostic contracts](https://github.com/ryancswallace/jobman), MIT License.
 - The [Go standard library](https://go.dev/LICENSE), BSD 3-Clause License.
 
 Per-artifact SPDX SBOMs record the complete resolved module graph and exact

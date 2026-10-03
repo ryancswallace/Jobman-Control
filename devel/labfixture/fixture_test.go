@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/ryancswallace/jobman/diagnostic"
 
 	"github.com/ryancswallace/jobman-control/internal/directory"
 	"github.com/ryancswallace/jobman-control/internal/domain"
@@ -154,10 +156,30 @@ func TestFixtureSeedIntegration(t *testing.T) {
 	if len(info.Namespaces) != 2 || len(info.Identities) != 2 {
 		t.Fatalf("seed identities/scopes=%#v", info)
 	}
+
+	deploymentID := "79000000-0000-4000-8000-000000000001"
+	if err = store.EnableDiagnosticSnapshots(deploymentID); err != nil {
+		t.Fatal(err)
+	}
+	source, err := store.Capabilities(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	principal := domain.Principal{Issuer: testInput().Issuer, Subject: "alice"}
 	for _, ns := range info.Namespaces {
 		if len(ns.JobIDs) != 5 || ns.ArrayID == "" || ns.CollectionID == "" || ns.GraphID == "" {
 			t.Fatalf("incomplete fixture namespace=%#v", ns)
+		}
+		for _, jobID := range ns.JobIDs {
+			selection := diagnostic.SharedSelection{DeploymentID: deploymentID, ControlInstanceID: source.InstanceID, NamespaceID: ns.ID, JobID: jobID}
+			collector := diagnostic.SharedCollector{Snapshots: fixtureSnapshotReader{store: store, principal: principal, namespace: ns.Name}}
+			evidence, readErr := collector.Collect(ctx, diagnostic.SharedCollectionRequest{Selection: selection})
+			if readErr != nil || evidence.Shared == nil || evidence.Subject.JobID != jobID || evidence.SchemaVersion != 2 {
+				t.Fatalf("real fixture evidence=%#v,%v", evidence, readErr)
+			}
+			if err = diagnostic.Verify(evidence); err != nil {
+				t.Fatal(err)
+			}
 		}
 		for index, jobID := range ns.JobIDs[:3] {
 			page, readErr := store.ListLogChunks(ctx, principal, ns.Name, jobID, domain.LogChunkOptions{Stream: "stdout", Limit: 100})
@@ -169,6 +191,37 @@ func TestFixtureSeedIntegration(t *testing.T) {
 				if page.State != "complete" || len(page.Chunks) != 2 || page.Chunks[1].ByteLength != 0 {
 					t.Fatalf("nonempty stream=%#v", page)
 				}
+				// Retained lifecycle histories remain bounded and do not disclose raw
+				// event payload fields that are outside the public metadata profile.
+				if _, insertErr := pool.Exec(ctx, `INSERT INTO execution_events(event_id,namespace_id,execution_id,agent_id,source_sequence,event_type,observed_at,document_digest,document)
+ SELECT gen_random_uuid(),namespace_id,id,agent_id,10000+number,'process.completed',transaction_timestamp(),'sha256:'||repeat('1',64),'{"spec":{"result":{"outcome":"success"}},"private-canary":"must-not-appear"}'::jsonb
+ FROM executions CROSS JOIN generate_series(1,300) number WHERE id=$1`, page.ExecutionID); insertErr != nil {
+					t.Fatal(insertErr)
+				}
+				selection := diagnostic.SharedSelection{DeploymentID: deploymentID, ControlInstanceID: source.InstanceID, NamespaceID: ns.ID, JobID: jobID}
+				snapshot, snapshotErr := store.ReadDiagnosticSnapshot(ctx, principal, ns.Name, selection)
+				if snapshotErr != nil {
+					t.Fatal(snapshotErr)
+				}
+				events := 0
+				truncated := false
+				for _, item := range snapshot.Snapshot.Items {
+					if item.Code == diagnostic.CodeSharedLifecycleEvent {
+						events++
+					}
+				}
+				for _, omission := range snapshot.Snapshot.Omissions {
+					truncated = truncated || omission.Code == diagnostic.OmissionEventsTruncated
+				}
+				encoded, encodeErr := json.Marshal(snapshot)
+				if encodeErr != nil || events != 256 || !truncated || strings.Contains(string(encoded), "private-canary") || strings.Contains(string(encoded), "must-not-appear") {
+					t.Fatalf("event disclosure/bounds=%d,%v", events, encodeErr)
+				}
+				collector := diagnostic.SharedCollector{Snapshots: fixtureSnapshotReader{store: store, principal: principal, namespace: ns.Name}}
+				if _, collectErr := collector.Collect(ctx, diagnostic.SharedCollectionRequest{Selection: selection}); collectErr != nil {
+					t.Fatal(collectErr)
+				}
+
 			case 1:
 				if page.State != "complete" || len(page.Chunks) != 1 || page.ByteLength != 0 {
 					t.Fatalf("empty stream=%#v", page)
@@ -180,4 +233,15 @@ func TestFixtureSeedIntegration(t *testing.T) {
 			}
 		}
 	}
+}
+
+type fixtureSnapshotReader struct {
+	store     *postgres.Store
+	principal domain.Principal
+	namespace string
+}
+
+func (reader fixtureSnapshotReader) ReadSnapshot(ctx context.Context, selection diagnostic.SharedSelection) (diagnostic.SharedSnapshot, error) {
+	result, err := reader.store.ReadDiagnosticSnapshot(ctx, reader.principal, reader.namespace, selection)
+	return result.Snapshot, err
 }

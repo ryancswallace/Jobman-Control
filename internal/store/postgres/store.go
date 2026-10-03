@@ -18,9 +18,10 @@ import (
 
 // Store is a PostgreSQL implementation of the shared job repository.
 type Store struct {
-	pool     *pgxpool.Pool
-	newID    func() (string, error)
-	tokenKey []byte
+	diagnosticDeploymentID string
+	pool                   *pgxpool.Pool
+	newID                  func() (string, error)
+	tokenKey               []byte
 }
 
 // New returns a store backed by pool.

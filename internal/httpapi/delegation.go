@@ -6,6 +6,8 @@ import "github.com/ryancswallace/jobman-control/internal/domain"
 // URL prefix. New routes are denied until explicitly reviewed and added here.
 func delegationRouteOperation(pattern string) string {
 	switch pattern {
+	case "GET /v1/namespaces/{namespace}/jobs/{jobID}/diagnostic-snapshot":
+		return domain.CapabilityEvidenceRead
 	case "GET /v1/me":
 		return domain.CapabilityNamespaceRead
 	case "GET /v1/namespaces/{namespace}/summary", "GET /v1/namespaces/{namespace}/jobs", "GET /v1/namespaces/{namespace}/jobs/{jobID}":

@@ -7,6 +7,10 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Add source-pinned, authorized transactional shared diagnostic snapshots with
+  real run/execution identity, bounded lifecycle/dependency facts and opaque log
+  references. Public core evidence integration uses an immutable development pin.
+
 - Add indexed bounded target catalogs and immutable UUID details with complete
   counts, stable creation cutoffs, decimal generation/store versions and current
   authorization snapshots, preserving legacy target routes. Large partition sets

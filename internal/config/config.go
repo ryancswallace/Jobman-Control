@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ryancswallace/jobman-control/internal/domain"
 )
 
 var namespacePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
@@ -38,6 +40,7 @@ const (
 // Config contains validated service settings. DatabaseURL is secret-bearing
 // and must never be logged or returned by an endpoint.
 type Config struct {
+	DiagnosticDeploymentID   string
 	DirectoryConfigFile      string
 	DirectoryMode            string
 	DelegationRegistryFile   string
@@ -144,6 +147,7 @@ func load(lookup lookupEnvironment) (Config, error) {
 		return Config{}, retentionErr
 	}
 	configuration := Config{
+		DiagnosticDeploymentID: strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID", "")),
 		DirectoryConfigFile:    strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE", "")),
 		DirectoryMode:          strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_MODE", "preview")),
 		DelegationRegistryFile: registryFile, DelegationClientCAFile: clientCAFile, DelegationAuditRetention: auditRetention,
@@ -177,6 +181,9 @@ func load(lookup lookupEnvironment) (Config, error) {
 		IdleTimeout:              60 * time.Second,
 		ShutdownTimeout:          10 * time.Second,
 		ReadinessTimeout:         2 * time.Second,
+	}
+	if configuration.DiagnosticDeploymentID != "" && !domain.IsID(configuration.DiagnosticDeploymentID) {
+		return Config{}, errors.New("diagnostic deployment identity must be a UUID")
 	}
 	if authModeErr := validateAuthentication(lookup, &configuration); authModeErr != nil {
 		return Config{}, authModeErr

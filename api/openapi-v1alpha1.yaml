@@ -249,6 +249,31 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/ClientError"}
         "409": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/diagnostic-snapshot:
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getDiagnosticSnapshot
+      description: Bounded factual metadata from one authorized transaction. Requires configured immutable deployment identity; no byte collection.
+      parameters:
+        - {$ref: "#/components/parameters/Namespace"}
+        - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: deploymentId, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: controlInstanceId, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: namespaceId, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: expectedJobRevision, in: query, schema: {type: string, pattern: "^[1-9][0-9]*$"}, description: Exact expected positive bigint revision; mismatch returns conflict.}
+        - {name: runId, in: query, schema: {type: string, format: uuid}, description: Exact actual run UUID. Default selects latest 32 real runs with an explicit truncation omission.}
+      responses:
+        "200": {description: Source-pinned public core snapshot plus current authority., content: {application/json: {schema: {$ref: "#/components/schemas/DiagnosticSnapshot"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "501": {$ref: "#/components/responses/ServerError"}
+        "503": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/target-catalog:
     get:
       security:
@@ -2067,6 +2092,105 @@ components:
             total: {$ref: "#/components/schemas/DecimalCount"}
             items: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/Partition"}}
             nextPageToken: {type: string}
+    DiagnosticSnapshot:
+      allOf:
+        - {$ref: "#/components/schemas/NamespaceReadAuthority"}
+        - type: object
+          required: [apiVersion, kind, snapshot]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: DiagnosticSnapshot}
+            snapshot: {$ref: "#/components/schemas/SharedDiagnosticSnapshot"}
+    SharedDiagnosticSnapshot:
+      type: object
+      additionalProperties: false
+      description: Public core diagnostic.SharedSnapshot version 1, bounded to 2 MiB; client validates with the pinned core contract.
+      required: [kind, schema_version, captured_at, source, jobman_version, platform, job, runs, metadata, items, logs, omissions, redaction_notices]
+      properties:
+        kind: {const: jobman.shared_diagnostic_snapshot}
+        schema_version: {const: 1}
+        captured_at: {type: string, format: date-time}
+        source:
+          type: object
+          additionalProperties: false
+          required: [kind, deployment_id, control_instance_id, namespace_id, control_version, contract_version]
+          properties:
+            kind: {const: control}
+            deployment_id: {type: string, format: uuid}
+            control_instance_id: {type: string, format: uuid}
+            namespace_id: {type: string, format: uuid}
+            control_version: {type: string}
+            contract_version: {const: jobman.control/v1alpha1}
+        jobman_version: {type: string}
+        platform: {type: string}
+        job:
+          type: object
+          additionalProperties: false
+          required: [id, revision, phase]
+          properties:
+            id: {type: string, format: uuid}
+            revision: {$ref: "#/components/schemas/DecimalCount"}
+            phase: {type: string}
+            outcome: {type: string}
+        runs:
+          type: array
+          maxItems: 32
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, number]
+            properties:
+              id: {type: string, format: uuid}
+              number: {$ref: "#/components/schemas/DecimalCount"}
+              execution_id: {type: string, format: uuid}
+        metadata: {const: transactional_snapshot}
+        items:
+          type: array
+          maxItems: 1024
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, code, value, source, quality, disclosure]
+            properties:
+              id: {type: string}
+              code: {type: string}
+              value: {}
+              observed_at: {type: string, format: date-time}
+              source:
+                type: object
+                additionalProperties: false
+                required: [kind]
+                properties:
+                  kind: {const: control}
+                  entity_id: {type: string, format: uuid}
+                  revision: {type: integer, minimum: 0}
+              quality: {enum: [observed, derived_exact]}
+              disclosure: {const: metadata}
+        logs:
+          type: array
+          maxItems: 64
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, run_id, execution_id, stream, manifest_revision, bytes, complete]
+            properties:
+              id: {type: string, description: Opaque reference without a path or URL.}
+              run_id: {type: string, format: uuid}
+              execution_id: {type: string, format: uuid}
+              stream: {enum: [stdout, stderr]}
+              manifest_revision: {$ref: "#/components/schemas/DecimalCount"}
+              bytes: {$ref: "#/components/schemas/DecimalCount"}
+              complete: {type: boolean}
+        omissions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, affects]
+            properties:
+              code: {type: string}
+              affects: {type: array, items: {type: string}}
+        redaction_notices: {type: array, maxItems: 0, items: {type: object}, description: No source content is included that requires value redaction; unsupported disclosures are omissions.}
     ManifestAuthority:
       type: object
       required: [asOf, namespace, namespaceId, jobId, recoveryEpoch, authorizationVersion, authorizationCheckedAt]

@@ -231,3 +231,6 @@ real delegated reads and directory reconciliation without changing existing Lab 
 
 [Bounded target monitoring](docs/TARGET_CATALOG.md) provides complete target counts,
 stable cursors and source authorization snapshots.
+
+[Shared diagnostic snapshots](docs/DIAGNOSTIC_SNAPSHOTS.md) expose bounded factual
+metadata with verified source identity for the public core evidence collector.

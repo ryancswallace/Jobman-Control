@@ -221,3 +221,6 @@ Job and job-list responses include a database transaction `asOf` timestamp.
 
 See [Bounded target monitoring](TARGET_CATALOG.md) for complete target catalogs
 and namespace-authorized immutable UUID details.
+
+See [Shared diagnostic snapshots](DIAGNOSTIC_SNAPSHOTS.md) for source-pinned
+metadata evidence, omissions, current authorization and bounded run selection.

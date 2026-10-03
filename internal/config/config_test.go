@@ -236,3 +236,19 @@ func TestDelegationConfigurationRequiresVerifiedTransport(t *testing.T) {
 		t.Fatal("unknown directory mode accepted")
 	}
 }
+
+func TestDiagnosticDeploymentIdentity(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"", "79000000-0000-4000-8000-000000000001", "not-an-id"} {
+		configuration, err := load(mapLookup(map[string]string{"JOBMAN_CONTROL_DATABASE_URL": "postgres://unused", "JOBMAN_CONTROL_DEVELOPMENT_AUTH": "true", "JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID": id}))
+		if id == "not-an-id" {
+			if err == nil {
+				t.Fatal("invalid evidence deployment accepted")
+			}
+			continue
+		}
+		if err != nil || configuration.DiagnosticDeploymentID != id {
+			t.Fatalf("diagnostic source configuration=%q,%v", configuration.DiagnosticDeploymentID, err)
+		}
+	}
+}

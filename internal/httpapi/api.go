@@ -125,6 +125,7 @@ func New(options Options) (http.Handler, error) {
 	mux.Handle("GET /v1/namespaces/{namespace}/audit", serverAPI.client(serverAPI.exportAudit))
 	mux.Handle("POST /v1/namespaces/{namespace}/history/imports", serverAPI.client(serverAPI.importCompletedHistory))
 	mux.Handle("POST /v1/namespaces/{namespace}/targets", serverAPI.client(serverAPI.createTarget))
+	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/diagnostic-snapshot", serverAPI.client(serverAPI.diagnosticSnapshot))
 	mux.Handle("GET /v1/namespaces/{namespace}/target-catalog", serverAPI.client(serverAPI.listTargetCatalog))
 	mux.Handle("GET /v1/namespaces/{namespace}/target-catalog/{targetID}", serverAPI.client(serverAPI.getTargetSnapshot))
 	mux.Handle("GET /v1/namespaces/{namespace}/target-catalog/{targetID}/partitions", serverAPI.client(serverAPI.listTargetPartitions))

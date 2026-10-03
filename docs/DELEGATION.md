@@ -77,10 +77,10 @@ of authority; Control resolves and checks their immutable namespace identity.
 | Job `/artifacts` metadata | `artifacts.read` |
 | Job `/log-chunks` bounded tail/range metadata | `logs.read` |
 | Job `/artifact-metadata` bounded output metadata | `artifacts.read` |
+| Job `/diagnostic-snapshot` bounded factual metadata | `evidence.read` |
 
-`evidence.read` is reserved in the service capability catalog; it does not create
-an evidence endpoint. New routes remain denied until explicitly added to the
-route matrix. Every execution/admin mutation, policy read, audit export, agent
+The diagnostic snapshot endpoint requires the separately configured source UUID.
+New routes remain denied until explicitly added to the route matrix. Every execution/admin mutation, policy read, audit export, agent
 route, arbitrary proxy route, and service-only event feed rejects actor
 assertions. A represented namespace administrator cannot cancel, submit, enroll,
 change membership, or operate targets through this boundary. Repository checks
