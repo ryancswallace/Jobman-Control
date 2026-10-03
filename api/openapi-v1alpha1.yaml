@@ -251,6 +251,10 @@ paths:
         "409": {$ref: "#/components/responses/ClientError"}
   /v1/namespaces/{namespace}/target-catalog:
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: listTargetCatalog
       parameters:
         - {$ref: "#/components/parameters/Namespace"}
@@ -265,6 +269,10 @@ paths:
         "503": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/target-catalog/{targetId}:
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getTargetSnapshot
       parameters:
         - {$ref: "#/components/parameters/Namespace"}
@@ -278,6 +286,10 @@ paths:
         "503": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/target-catalog/{targetId}/partitions:
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: listTargetPartitions
       parameters:
         - {$ref: "#/components/parameters/Namespace"}
