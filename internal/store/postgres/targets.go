@@ -342,22 +342,33 @@ func (store *Store) GetTarget(
 	namespace string,
 	name string,
 ) (domain.Target, error) {
-	target, err := scanTarget(store.pool.QueryRow(ctx, targetSelect+`
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.Target, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityTargetsRead)
+		if authErr != nil {
+			if principal.Delegation == nil && errors.Is(authErr, domain.ErrForbidden) {
+				return domain.Target{}, domain.ErrNotFound
+			}
+			return domain.Target{}, authErr
+		}
+		principal = authorization.canonical
+
+		target, err := scanTarget(tx.QueryRow(ctx, targetSelect+`
 		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND t.name = $4
 	`, principal.Issuer, principal.Subject, namespace, name))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Target{}, domain.ErrNotFound
-	}
-	if err != nil {
-		return domain.Target{}, fmt.Errorf("get target: %w", err)
-	}
-	if partitionErr := store.loadPartitions(ctx, &target); partitionErr != nil {
-		return domain.Target{}, partitionErr
-	}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Target{}, domain.ErrNotFound
+		}
+		if err != nil {
+			return domain.Target{}, fmt.Errorf("get target: %w", err)
+		}
+		if partitionErr := loadPartitionsWithQuerier(ctx, tx, &target); partitionErr != nil {
+			return domain.Target{}, partitionErr
+		}
 
-	return target, nil
+		return target, nil
+	})
 }
 
 // ListTargets returns a bounded name-ordered target list to namespace members.
@@ -366,8 +377,15 @@ func (store *Store) ListTargets(
 	principal domain.Principal,
 	namespace string,
 ) ([]domain.Target, error) {
-	var authorized bool
-	if err := store.pool.QueryRow(ctx, `
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) ([]domain.Target, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityTargetsRead)
+		if authErr != nil {
+			return nil, authErr
+		}
+		principal = authorization.canonical
+
+		var authorized bool
+		if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM principals AS p
@@ -376,40 +394,41 @@ func (store *Store) ListTargets(
 			WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
 		)
 	`, principal.Issuer, principal.Subject, namespace).Scan(&authorized); err != nil {
-		return nil, fmt.Errorf("authorize target list: %w", err)
-	}
-	if !authorized {
-		return nil, domain.ErrForbidden
-	}
-	rows, err := store.pool.Query(ctx, targetSelect+`
+			return nil, fmt.Errorf("authorize target list: %w", err)
+		}
+		if !authorized {
+			return nil, domain.ErrForbidden
+		}
+		rows, err := tx.Query(ctx, targetSelect+`
 		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
 		ORDER BY t.name
 		LIMIT 1000
 	`, principal.Issuer, principal.Subject, namespace)
-	if err != nil {
-		return nil, fmt.Errorf("list targets: %w", err)
-	}
-	defer rows.Close()
-	targets := make([]domain.Target, 0)
-	for rows.Next() {
-		target, scanErr := scanTarget(rows)
-		if scanErr != nil {
-			return nil, fmt.Errorf("scan target: %w", scanErr)
+		if err != nil {
+			return nil, fmt.Errorf("list targets: %w", err)
 		}
-		targets = append(targets, target)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate targets: %w", err)
-	}
-	for index := range targets {
-		if partitionErr := store.loadPartitions(ctx, &targets[index]); partitionErr != nil {
-			return nil, partitionErr
+		defer rows.Close()
+		targets := make([]domain.Target, 0)
+		for rows.Next() {
+			target, scanErr := scanTarget(rows)
+			if scanErr != nil {
+				return nil, fmt.Errorf("scan target: %w", scanErr)
+			}
+			targets = append(targets, target)
 		}
-	}
+		if err = rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate targets: %w", err)
+		}
+		for index := range targets {
+			if partitionErr := loadPartitionsWithQuerier(ctx, tx, &targets[index]); partitionErr != nil {
+				return nil, partitionErr
+			}
+		}
 
-	return targets, nil
+		return targets, nil
+	})
 }
 
 func insertTarget(
@@ -594,10 +613,6 @@ func scanTarget(row rowScanner) (domain.Target, error) {
 
 type queryRowQuerier interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
-}
-
-func (store *Store) loadPartitions(ctx context.Context, target *domain.Target) error {
-	return loadPartitionsWithQuerier(ctx, store.pool, target)
 }
 
 func loadPartitionsWithQuerier(ctx context.Context, querier queryRowQuerier, target *domain.Target) error {

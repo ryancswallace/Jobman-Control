@@ -247,23 +247,34 @@ func (store *Store) GetGraph(
 	principal domain.Principal,
 	namespace, graphID string,
 ) (domain.Graph, error) {
-	graph, err := scanGraph(store.pool.QueryRow(ctx, graphSelect+`
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.Graph, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityGroupsRead)
+		if authErr != nil {
+			if principal.Delegation == nil && errors.Is(authErr, domain.ErrForbidden) {
+				return domain.Graph{}, domain.ErrNotFound
+			}
+			return domain.Graph{}, authErr
+		}
+		principal = authorization.canonical
+
+		graph, err := scanGraph(tx.QueryRow(ctx, graphSelect+`
 		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND g.id = $4
 		GROUP BY g.id, n.name
 	`, principal.Issuer, principal.Subject, namespace, graphID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Graph{}, domain.ErrNotFound
-	}
-	if err != nil {
-		return domain.Graph{}, fmt.Errorf("get graph: %w", err)
-	}
-	if loadErr := loadGraphItems(ctx, store.pool, &graph); loadErr != nil {
-		return domain.Graph{}, loadErr
-	}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Graph{}, domain.ErrNotFound
+		}
+		if err != nil {
+			return domain.Graph{}, fmt.Errorf("get graph: %w", err)
+		}
+		if loadErr := loadGraphItems(ctx, tx, &graph); loadErr != nil {
+			return domain.Graph{}, loadErr
+		}
 
-	return graph, nil
+		return graph, nil
+	})
 }
 
 const graphSelect = `

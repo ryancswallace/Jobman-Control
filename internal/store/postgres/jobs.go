@@ -110,19 +110,30 @@ func (store *Store) GetJob(
 	namespace string,
 	jobID string,
 ) (domain.Job, error) {
-	job, err := scanJob(store.pool.QueryRow(ctx, jobSelect+`
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.Job, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityJobsRead)
+		if authErr != nil {
+			if principal.Delegation == nil && errors.Is(authErr, domain.ErrForbidden) {
+				return domain.Job{}, domain.ErrNotFound
+			}
+			return domain.Job{}, authErr
+		}
+		principal = authorization.canonical
+
+		job, err := scanJob(tx.QueryRow(ctx, jobSelect+`
         JOIN authorized_memberships AS m ON m.namespace_id = n.id
         JOIN principals AS p ON p.id = m.principal_id
         WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND j.id = $4
 	`, principal.Issuer, principal.Subject, namespace, jobID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Job{}, domain.ErrNotFound
-	}
-	if err != nil {
-		return domain.Job{}, fmt.Errorf("get job: %w", err)
-	}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Job{}, domain.ErrNotFound
+		}
+		if err != nil {
+			return domain.Job{}, fmt.Errorf("get job: %w", err)
+		}
 
-	return job, nil
+		return job, nil
+	})
 }
 
 // ListJobs returns a bounded, keyset-paginated namespace history to any
@@ -134,38 +145,49 @@ func (store *Store) ListJobs(
 	namespace string,
 	options domain.JobListOptions,
 ) (domain.JobPage, error) {
-	if options.JobID != "" && !domain.IsID(options.JobID) {
-		return domain.JobPage{}, errors.New("job ID is invalid")
-	}
-	if options.Confidence != "" && !slices.Contains([]string{"current", "stale", "uncertain", "lost", "attention"}, options.Confidence) {
-		return domain.JobPage{}, errors.New("confidence filter is invalid")
-	}
-	if options.OwnerPrincipalID != "" && !domain.IsID(options.OwnerPrincipalID) {
-		return domain.JobPage{}, errors.New("job owner is invalid")
-	}
-	if len(options.Outcome) > 64 {
-		return domain.JobPage{}, errors.New("job outcome is invalid")
-	}
-	if options.CompletedFrom != nil && options.CompletedBefore != nil && !options.CompletedFrom.Before(*options.CompletedBefore) {
-		return domain.JobPage{}, errors.New("completion window is invalid")
-	}
-	if options.Limit < 1 || options.Limit > domain.MaximumJobListLimit {
-		return domain.JobPage{}, errors.New("job list limit is out of range")
-	}
-	if options.Phase != "" && !domain.ValidJobPhaseFilter(options.Phase) {
-		return domain.JobPage{}, errors.New("job list phase is invalid")
-	}
-	var beforeTime any
-	var beforeID any
-	if options.Before != nil {
-		if options.Before.CreatedAt.IsZero() || !domain.IsID(options.Before.ID) {
-			return domain.JobPage{}, errors.New("job list cursor is invalid")
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.JobPage, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityJobsRead)
+		if authErr != nil {
+			return domain.JobPage{}, authErr
 		}
-		beforeTime = options.Before.CreatedAt.UTC()
-		beforeID = options.Before.ID
-	}
-	var authorized bool
-	if err := store.pool.QueryRow(ctx, `
+		principal = authorization.canonical
+		snapshotTime, timeErr := querySnapshotTime(ctx, tx)
+		if timeErr != nil {
+			return domain.JobPage{}, timeErr
+		}
+
+		if options.JobID != "" && !domain.IsID(options.JobID) {
+			return domain.JobPage{}, errors.New("job ID is invalid")
+		}
+		if options.Confidence != "" && !slices.Contains([]string{"current", "stale", "uncertain", "lost", "attention"}, options.Confidence) {
+			return domain.JobPage{}, errors.New("confidence filter is invalid")
+		}
+		if options.OwnerPrincipalID != "" && !domain.IsID(options.OwnerPrincipalID) {
+			return domain.JobPage{}, errors.New("job owner is invalid")
+		}
+		if len(options.Outcome) > 64 {
+			return domain.JobPage{}, errors.New("job outcome is invalid")
+		}
+		if options.CompletedFrom != nil && options.CompletedBefore != nil && !options.CompletedFrom.Before(*options.CompletedBefore) {
+			return domain.JobPage{}, errors.New("completion window is invalid")
+		}
+		if options.Limit < 1 || options.Limit > domain.MaximumJobListLimit {
+			return domain.JobPage{}, errors.New("job list limit is out of range")
+		}
+		if options.Phase != "" && !domain.ValidJobPhaseFilter(options.Phase) {
+			return domain.JobPage{}, errors.New("job list phase is invalid")
+		}
+		var beforeTime any
+		var beforeID any
+		if options.Before != nil {
+			if options.Before.CreatedAt.IsZero() || !domain.IsID(options.Before.ID) {
+				return domain.JobPage{}, errors.New("job list cursor is invalid")
+			}
+			beforeTime = options.Before.CreatedAt.UTC()
+			beforeID = options.Before.ID
+		}
+		var authorized bool
+		if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM principals AS p
@@ -174,12 +196,12 @@ func (store *Store) ListJobs(
 			WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
 		)
 	`, principal.Issuer, principal.Subject, namespace).Scan(&authorized); err != nil {
-		return domain.JobPage{}, fmt.Errorf("authorize job list: %w", err)
-	}
-	if !authorized {
-		return domain.JobPage{}, domain.ErrForbidden
-	}
-	rows, err := store.pool.Query(ctx, jobSelect+`
+			return domain.JobPage{}, fmt.Errorf("authorize job list: %w", err)
+		}
+		if !authorized {
+			return domain.JobPage{}, domain.ErrForbidden
+		}
+		rows, err := tx.Query(ctx, jobSelect+`
         JOIN authorized_memberships AS m ON m.namespace_id = n.id
         JOIN principals AS p ON p.id = m.principal_id
         WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
@@ -195,29 +217,30 @@ func (store *Store) ListJobs(
                 OR ($14 = 'attention' AND j.phase <> 'terminal' AND current_execution.observation_confidence IN ('stale','uncertain','lost')))
         ORDER BY j.created_at DESC, j.id DESC LIMIT $7
 	`, principal.Issuer, principal.Subject, namespace, options.Phase, beforeTime, beforeID, options.Limit+1, options.Outcome, options.OwnerPrincipalID, options.CompletedFrom, options.CompletedBefore, options.CreatedBefore, options.JobID, options.Confidence)
-	if err != nil {
-		return domain.JobPage{}, fmt.Errorf("list jobs: %w", err)
-	}
-	defer rows.Close()
-	jobs := make([]domain.Job, 0, options.Limit+1)
-	for rows.Next() {
-		job, scanErr := scanJob(rows)
-		if scanErr != nil {
-			return domain.JobPage{}, fmt.Errorf("scan job: %w", scanErr)
+		if err != nil {
+			return domain.JobPage{}, fmt.Errorf("list jobs: %w", err)
 		}
-		jobs = append(jobs, job)
-	}
-	if err = rows.Err(); err != nil {
-		return domain.JobPage{}, fmt.Errorf("iterate jobs: %w", err)
-	}
-	page := domain.JobPage{Jobs: jobs}
-	if len(jobs) > options.Limit {
-		last := jobs[options.Limit-1]
-		page.Jobs = jobs[:options.Limit]
-		page.NextCursor = &domain.JobCursor{CreatedAt: last.CreatedAt, ID: last.ID}
-	}
+		defer rows.Close()
+		jobs := make([]domain.Job, 0, options.Limit+1)
+		for rows.Next() {
+			job, scanErr := scanJob(rows)
+			if scanErr != nil {
+				return domain.JobPage{}, fmt.Errorf("scan job: %w", scanErr)
+			}
+			jobs = append(jobs, job)
+		}
+		if err = rows.Err(); err != nil {
+			return domain.JobPage{}, fmt.Errorf("iterate jobs: %w", err)
+		}
+		page := domain.JobPage{Jobs: jobs, AsOf: snapshotTime}
+		if len(jobs) > options.Limit {
+			last := jobs[options.Limit-1]
+			page.Jobs = jobs[:options.Limit]
+			page.NextCursor = &domain.JobCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		}
 
-	return page, nil
+		return page, nil
+	})
 }
 
 func validateSubmission(submission domain.JobSubmission) error {
@@ -657,7 +680,7 @@ func scanJob(row rowScanner) (domain.Job, error) {
 		&job.Lifecycle.StartedAt, &job.Lifecycle.StartedRecordedAt, &job.Lifecycle.StartedProvenance,
 		&job.Lifecycle.CompletedAt, &job.Lifecycle.CompletedRecordedAt, &job.Lifecycle.CompletedProvenance,
 		&run.ID, &run.Number, &run.ExecutionID, &job.Group.CollectionID, &job.Group.CollectionIndex,
-		&job.Group.GraphID, &job.Group.GraphIndex, &job.Group.GraphDisposition,
+		&job.Group.GraphID, &job.Group.GraphIndex, &job.Group.GraphDisposition, &job.AsOf,
 	)
 	if err != nil {
 		return domain.Job{}, err
@@ -679,6 +702,7 @@ func scanJob(row rowScanner) (domain.Job, error) {
 			*timestamp = timestamp.UTC()
 		}
 	}
+	job.AsOf = job.AsOf.UTC()
 	job.CreatedAt = job.CreatedAt.UTC()
 	job.UpdatedAt = job.UpdatedAt.UTC()
 	if confidenceUpdatedAt != nil {

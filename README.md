@@ -32,6 +32,7 @@ submit work, enforce policy, and track results.
 | --- | --- |
 | Shared state | PostgreSQL-backed jobs, runs, assignments, target generations, policy, and audit history |
 | Monitoring | Instance discovery, complete namespace summaries, filtered job pages, original owners, runs, and lifecycle provenance |
+| Delegation | [Pinned read-only service assertions](docs/DELEGATION.md), verified directory aliases, replay protection, and repository scope checks |
 | Group monitoring | [Bounded catalogs, array children, graph predicates, and neighborhoods](docs/GROUP_MONITORING.md) with complete source counts |
 | Placement | Named hosts, on-premises Slurm partitions, and AWS ParallelCluster target records |
 | Admission | Portable workload validation against target, runtime, platform, resource, log, and artifact capabilities |

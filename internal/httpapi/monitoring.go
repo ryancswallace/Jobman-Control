@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/ryancswallace/jobman-control/internal/domain"
@@ -17,7 +18,11 @@ func (service *api) capabilities(writer http.ResponseWriter, request *http.Reque
 }
 
 func (service *api) namespaceSummary(writer http.ResponseWriter, request *http.Request, principal domain.Principal) {
-	query := request.URL.Query()
+	query, parseErr := url.ParseQuery(request.URL.RawQuery)
+	if parseErr != nil {
+		writeError(writer, http.StatusBadRequest, "invalid_query", "summary query is invalid")
+		return
+	}
 	for name, values := range query {
 		if (name != "completedFrom" && name != "completedBefore") || len(values) != 1 {
 			writeError(writer, http.StatusBadRequest, "invalid_query", "summary query is invalid")

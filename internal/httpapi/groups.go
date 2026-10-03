@@ -70,7 +70,10 @@ func boundedGroupInt(query url.Values, name string, fallback, minimum, maximum i
 }
 
 func readGroupListOptions(request *http.Request, collections bool) (domain.GroupListOptions, error) {
-	query := request.URL.Query()
+	query, parseErr := url.ParseQuery(request.URL.RawQuery)
+	if parseErr != nil {
+		return domain.GroupListOptions{}, parseErr
+	}
 	names := []string{"limit", "pageToken", "createdBefore"}
 	if collections {
 		names = append(names, "arrayMode")
@@ -165,7 +168,7 @@ func writeGroupCatalog(writer http.ResponseWriter, result map[string]any, create
 
 func (service *api) collectionSummary(writer http.ResponseWriter, request *http.Request, principal domain.Principal) {
 	id := request.PathValue("collectionID")
-	if !domain.IsID(id) || len(request.URL.Query()) != 0 {
+	if !domain.IsID(id) || request.URL.RawQuery != "" {
 		groupQueryError(writer)
 		return
 	}
@@ -179,7 +182,7 @@ func (service *api) collectionSummary(writer http.ResponseWriter, request *http.
 
 func (service *api) graphSummary(writer http.ResponseWriter, request *http.Request, principal domain.Principal) {
 	id := request.PathValue("graphID")
-	if !domain.IsID(id) || len(request.URL.Query()) != 0 {
+	if !domain.IsID(id) || request.URL.RawQuery != "" {
 		groupQueryError(writer)
 		return
 	}
@@ -192,7 +195,10 @@ func (service *api) graphSummary(writer http.ResponseWriter, request *http.Reque
 }
 
 func readGroupItemPage(request *http.Request) (after, limit int, err error) {
-	query := request.URL.Query()
+	query, parseErr := url.ParseQuery(request.URL.RawQuery)
+	if parseErr != nil {
+		return 0, 0, parseErr
+	}
 	if queryErr := knownGroupQuery(query, "limit", "afterIndex"); queryErr != nil {
 		return 0, 0, queryErr
 	}
@@ -248,7 +254,10 @@ func (service *api) graphNodes(writer http.ResponseWriter, request *http.Request
 
 func readGraphEdgeOptions(request *http.Request) (domain.GraphEdgeOptions, error) {
 	result := domain.GraphEdgeOptions{}
-	query := request.URL.Query()
+	query, parseErr := url.ParseQuery(request.URL.RawQuery)
+	if parseErr != nil {
+		return result, parseErr
+	}
 	if err := knownGroupQuery(query, "limit", "nodeId", "direction", "pageToken"); err != nil {
 		return result, err
 	}
@@ -300,7 +309,11 @@ func (service *api) graphDependencies(writer http.ResponseWriter, request *http.
 
 func (service *api) graphNeighborhood(writer http.ResponseWriter, request *http.Request, principal domain.Principal) {
 	id := request.PathValue("graphID")
-	query := request.URL.Query()
+	query, parseErr := url.ParseQuery(request.URL.RawQuery)
+	if parseErr != nil {
+		groupQueryError(writer)
+		return
+	}
 	nodeID := query.Get("nodeId")
 	if !domain.IsID(id) || !domain.IsID(nodeID) || knownGroupQuery(query, "nodeId", "maxNodes", "maxEdges") != nil {
 		groupQueryError(writer)

@@ -48,7 +48,7 @@ func TestMonitoringHTTPContracts(t *testing.T) {
 	if repository.from == nil || repository.before == nil || repository.principal.Subject != "test-subject" {
 		t.Fatalf("summary arguments=%#v", repository)
 	}
-	for _, query := range []string{"completedFrom=2026-10-03T00:00:00Z", "completedFrom=x&completedBefore=y", "completedFrom=2026-10-03T00:00:00Z&completedBefore=2026-10-02T00:00:00Z", "other=x"} {
+	for _, query := range []string{"completedFrom=2026-10-03T00:00:00Z", "completedFrom=x&completedBefore=y", "completedFrom=2026-10-03T00:00:00Z&completedBefore=2026-10-02T00:00:00Z", "other=x", "completedFrom=%zz"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/namespaces/research/summary?"+query, nil))
 		if response.Code != http.StatusBadRequest {
@@ -64,7 +64,7 @@ func TestMonitoringFilters(t *testing.T) {
 	if err != nil || options.Phase != "active" || options.Outcome != "future" || options.Confidence != "attention" || options.OwnerPrincipalID != testJobID || options.JobID != testJobID || options.CompletedFrom == nil || options.CompletedBefore == nil || options.CreatedBefore == nil {
 		t.Fatalf("filter options=%#v,%v", options, err)
 	}
-	for _, query := range []string{"jobId=bad", "ownerPrincipalId=bad", "confidence=unknown", "createdBefore=bad", "completedFrom=2026-10-03T00:00:00Z&completedBefore=2026-10-02T00:00:00Z", "outcome=success&outcome=failure"} {
+	for _, query := range []string{"jobId=bad", "ownerPrincipalId=%zz", "phase=active;outcome=success", "ownerPrincipalId=bad", "confidence=unknown", "createdBefore=bad", "completedFrom=2026-10-03T00:00:00Z&completedBefore=2026-10-02T00:00:00Z", "outcome=success&outcome=failure"} {
 		if _, err = readJobListOptions(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/jobs?"+query, nil)); err == nil {
 			t.Fatalf("invalid query accepted: %s", query)
 		}

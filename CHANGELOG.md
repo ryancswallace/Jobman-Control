@@ -7,6 +7,10 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Certificate-bound, pinned read-only service delegation with replay/audit
+  records, approved directory alias binding, managed-namespace freshness checks,
+  and repository-level mutation denial. Job envelopes expose actual read times.
+
 - Bounded collection/graph catalogs, summary and child pages, Slurm array task
   indices, source dependency counts, and one-hop graph neighborhoods with exact
   omission counts; legacy complete group documents remain available.

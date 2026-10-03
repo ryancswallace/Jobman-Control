@@ -12,8 +12,10 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	jobmanprotocol "github.com/ryancswallace/jobman-control/contracts/jobman/v1alpha1"
@@ -29,6 +31,7 @@ const apiVersion = "jobman.control/v1alpha1"
 type Options struct {
 	Repository               domain.ControlRepository
 	Authenticator            auth.Authenticator
+	DelegationAuthenticator  *auth.DelegationAuthenticator
 	MaxRequestBytes          int64
 	ReadinessTimeout         time.Duration
 	EnrollmentLifetime       time.Duration
@@ -41,6 +44,7 @@ type Options struct {
 type api struct {
 	repository               domain.ControlRepository
 	authenticator            auth.Authenticator
+	delegationAuthenticator  *auth.DelegationAuthenticator
 	maxRequestBytes          int64
 	readinessTimeout         time.Duration
 	logger                   *slog.Logger
@@ -77,6 +81,7 @@ func New(options Options) (http.Handler, error) {
 	serverAPI := &api{
 		repository:               options.Repository,
 		authenticator:            options.Authenticator,
+		delegationAuthenticator:  options.DelegationAuthenticator,
 		maxRequestBytes:          options.MaxRequestBytes,
 		readinessTimeout:         options.ReadinessTimeout,
 		logger:                   options.Logger,
@@ -201,9 +206,24 @@ func (service *api) client(next clientHandler) http.Handler {
 		if len(values) == 1 {
 			value = values[0]
 		}
-		principal, err := service.authenticator.Authenticate(request.Context(), value)
+		var principal domain.Principal
+		var err error
+		scheme, _, _ := strings.Cut(value, " ")
+		if strings.EqualFold(scheme, auth.DelegationScheme) {
+			if service.delegationAuthenticator == nil {
+				writeUnauthenticated(writer)
+				return
+			}
+			principal, err = service.delegationAuthenticator.Authenticate(request.Context(), value, request.TLS, delegationRouteOperation(request.Pattern))
+		} else {
+			principal, err = service.authenticator.Authenticate(request.Context(), value)
+		}
 		if err != nil {
-			writeUnauthenticated(writer)
+			if errors.Is(err, domain.ErrAuthorizationUnavailable) || errors.Is(err, domain.ErrForbidden) {
+				service.writeRepositoryError(writer, request, "authorize delegated read", err)
+			} else {
+				writeUnauthenticated(writer)
+			}
 			return
 		}
 		next(writer, request, principal)
@@ -554,7 +574,7 @@ func (service *api) listJobs(
 	for _, job := range page.Jobs {
 		items = append(items, newJobResponse(job))
 	}
-	response := jobListResponse{APIVersion: apiVersion, Kind: "JobList", Items: items}
+	response := jobListResponse{APIVersion: apiVersion, Kind: "JobList", Items: items, AsOf: page.AsOf}
 	if page.NextCursor != nil {
 		response.NextPageToken, err = encodeJobPageToken(*page.NextCursor)
 		if err != nil {
@@ -571,7 +591,10 @@ type jobPageToken struct {
 }
 
 func readJobListOptions(request *http.Request) (domain.JobListOptions, error) {
-	query := request.URL.Query()
+	query, parseErr := url.ParseQuery(request.URL.RawQuery)
+	if parseErr != nil {
+		return domain.JobListOptions{}, errors.New("job query is invalid")
+	}
 	if len(query) > 10 {
 		return domain.JobListOptions{}, errors.New("unsupported query parameter")
 	}
@@ -986,6 +1009,8 @@ func (service *api) writeRepositoryError(
 	switch {
 	case errors.Is(err, domain.ErrUnauthenticated):
 		writeUnauthenticated(writer)
+	case errors.Is(err, domain.ErrAuthorizationUnavailable):
+		writeError(writer, http.StatusServiceUnavailable, "authorization_unavailable", "current directory authorization cannot be verified")
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(writer, http.StatusForbidden, "forbidden", "principal is not authorized for this namespace")
 	case errors.Is(err, domain.ErrNotFound):
@@ -1036,6 +1061,7 @@ func revisionETag(revision int64) string {
 }
 
 type jobResponse struct {
+	AsOf       time.Time   `json:"asOf"`
 	APIVersion string      `json:"apiVersion"`
 	Kind       string      `json:"kind"`
 	Metadata   jobMetadata `json:"metadata"`
@@ -1044,6 +1070,7 @@ type jobResponse struct {
 }
 
 type jobListResponse struct {
+	AsOf          time.Time     `json:"asOf"`
 	APIVersion    string        `json:"apiVersion"`
 	Kind          string        `json:"kind"`
 	Items         []jobResponse `json:"items"`
@@ -1205,6 +1232,7 @@ type apiError struct {
 
 func newJobResponse(job domain.Job) jobResponse {
 	response := jobResponse{
+		AsOf:       job.AsOf,
 		APIVersion: apiVersion,
 		Kind:       "Job",
 		Metadata: jobMetadata{

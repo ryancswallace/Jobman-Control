@@ -64,6 +64,10 @@ paths:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getNamespaceSummary
       description: >-
         Complete authorized counts at one database snapshot. Phase, active, awaiting,
@@ -89,6 +93,10 @@ paths:
         "500": {$ref: "#/components/responses/ServerError"}
   /v1/me:
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getCurrentPrincipal
       description: >-
         Discover only the authenticated principal's currently authorized namespaces.
@@ -270,6 +278,10 @@ paths:
         "403": {$ref: "#/components/responses/ClientError"}
         "409": {$ref: "#/components/responses/ClientError"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: listTargets
       responses:
         "200":
@@ -291,6 +303,10 @@ paths:
       - {$ref: "#/components/parameters/Namespace"}
       - {$ref: "#/components/parameters/TargetName"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getTarget
       responses:
         "200":
@@ -402,6 +418,10 @@ paths:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: listJobs
       description: Return one stable newest-first page of authorized namespace jobs.
       parameters:
@@ -479,6 +499,10 @@ paths:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: listCollectionSummaries
       description: >-
         Complete group summaries without child jobs, ordered by descending creation time and UUID. Total covers the creation cutoff and array mode, ignoring the page cursor. Keep filters unchanged between pages.
@@ -544,6 +568,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getCollection
       description: Return the aggregate collection state and ordered child job snapshots.
       responses:
@@ -560,6 +588,10 @@ paths:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: listGraphSummaries
       description: >-
         Complete group summaries without child jobs, ordered by descending creation time and UUID. Total covers the creation cutoff and array mode, ignoring the page cursor. Keep filters unchanged between pages.
@@ -622,6 +654,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getGraph
       responses:
         "200":
@@ -641,6 +677,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getCollectionSummary
       description: >-
         Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
@@ -663,6 +703,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getCollectionItemList
       description: >-
         Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
@@ -692,6 +736,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getGraphSummary
       description: >-
         Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
@@ -714,6 +762,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getGraphNodeList
       description: >-
         Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
@@ -743,6 +795,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getGraphDependencyList
       description: >-
         Source predicates in ascending upstream/downstream job UUID order. Optional nodeId selects incident edges; direction requires nodeId. Total ignores the page cursor. Keep filters unchanged between pages.
@@ -778,6 +834,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getGraphNeighborhood
       description: >-
         Required nodeId selects a one-hop induced neighborhood. Center is always included; remaining nodes use immutable index order. Edges only connect returned nodes. Exact totals and omissions cover the complete neighborhood.
@@ -877,6 +937,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getJob
       responses:
         "200":
@@ -895,6 +959,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getJobLogs
       description: >-
         Return authorized logical log metadata. Bytes remain in the target-approved
@@ -916,6 +984,10 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getJobArtifacts
       description: >-
         Return authorized immutable output metadata. Bytes remain in the
@@ -1207,6 +1279,14 @@ paths:
         "409": {$ref: "#/components/responses/ClientError"}
 components:
   securitySchemes:
+    delegatedRead:
+      type: http
+      scheme: Jobman-Delegation
+      bearerFormat: JWT
+      description: Pinned Ed25519 represented-user read assertion, at most 60 seconds, bound to the actual registered mTLS leaf certificate. See docs/DELEGATION.md.
+    serviceMutualTLS:
+      type: mutualTLS
+      description: Registered Dashboard service certificate with a trusted client chain and pinned leaf thumbprint.
     oidcBearer:
       type: http
       scheme: bearer
@@ -1331,6 +1411,7 @@ components:
           type: object
           required: [issuer, subject]
           properties:
+            directoryId: {type: string, format: uuid}
             id: {type: string, format: uuid}
             issuer: {type: string}
             subject: {type: string}
@@ -1354,6 +1435,10 @@ components:
                 uniqueItems: true
                 description: Authorization capabilities, not feature availability promises.
                 items: {type: string}
+              authorizationCheckedAt: {type: string, format: date-time}
+              lastDirectoryVerifiedAt: {type: string, format: date-time}
+              authorizationExpiresAt: {type: string, format: date-time}
+              authorizationStatus: {enum: [verified]}
               authorizationVersion: {type: string, pattern: "^[1-9][0-9]*$"}
         nextPageToken: {type: string}
     MembershipGrantRequest:
@@ -1846,6 +1931,7 @@ components:
       type: object
       required: [apiVersion, kind, metadata, spec, status]
       properties:
+        asOf: {type: string, format: date-time}
         apiVersion: {const: jobman.control/v1alpha1}
         kind: {const: Job}
         metadata:
@@ -1912,6 +1998,7 @@ components:
       additionalProperties: false
       required: [apiVersion, kind, items]
       properties:
+        asOf: {type: string, format: date-time}
         apiVersion: {const: jobman.control/v1alpha1}
         kind: {const: JobList}
         items:

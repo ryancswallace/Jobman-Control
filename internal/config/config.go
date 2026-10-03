@@ -38,6 +38,9 @@ const (
 // Config contains validated service settings. DatabaseURL is secret-bearing
 // and must never be logged or returned by an endpoint.
 type Config struct {
+	DelegationRegistryFile   string
+	DelegationClientCAFile   string
+	DelegationAuditRetention time.Duration
 	DatabaseURL              string
 	ListenAddress            string
 	DevelopmentAuth          bool
@@ -126,7 +129,20 @@ func load(lookup lookupEnvironment) (Config, error) {
 		return Config{}, err
 	}
 
+	registryFile := strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DELEGATION_REGISTRY_FILE", ""))
+	clientCAFile := strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DELEGATION_CLIENT_CA_FILE", ""))
+	if (registryFile == "") != (clientCAFile == "") {
+		return Config{}, errors.New("delegation registry and client CA must be configured together")
+	}
+	if registryFile != "" && (tlsCertificateFile == "" || authMode != AuthModeOIDC) {
+		return Config{}, errors.New("delegation requires server TLS and production OIDC authentication")
+	}
+	auditRetention, retentionErr := durationValue(lookup, "JOBMAN_CONTROL_DELEGATION_AUDIT_RETENTION", 90*24*time.Hour, 90*24*time.Hour, 3650*24*time.Hour)
+	if retentionErr != nil {
+		return Config{}, retentionErr
+	}
 	configuration := Config{
+		DelegationRegistryFile: registryFile, DelegationClientCAFile: clientCAFile, DelegationAuditRetention: auditRetention,
 		DatabaseURL:              databaseURL,
 		ListenAddress:            listenAddress,
 		DevelopmentAuth:          developmentAuth,

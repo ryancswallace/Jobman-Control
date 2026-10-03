@@ -189,3 +189,36 @@ func mapLookup(values map[string]string) lookupEnvironment {
 		return value, exists
 	}
 }
+
+func TestDelegationConfigurationRequiresVerifiedTransport(t *testing.T) {
+	t.Parallel()
+	baseline := map[string]string{
+		"JOBMAN_CONTROL_AGENT_CA_CERT_FILE": "agent-ca.pem",
+		"JOBMAN_CONTROL_AGENT_CA_KEY_FILE":  "agent-ca.key",
+		"JOBMAN_CONTROL_DATABASE_URL":       "postgres://unused",
+		"JOBMAN_CONTROL_AUTH_MODE":          "oidc",
+		"JOBMAN_CONTROL_OIDC_ISSUER":        "https://identity.example.edu",
+		"JOBMAN_CONTROL_OIDC_AUDIENCE":      "jobman-control",
+		"JOBMAN_CONTROL_AGENT_TOKEN_KEY":    base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+		"JOBMAN_CONTROL_TLS_CERT_FILE":      "server.pem", "JOBMAN_CONTROL_TLS_KEY_FILE": "server.key",
+		"JOBMAN_CONTROL_DELEGATION_REGISTRY_FILE": "services.json", "JOBMAN_CONTROL_DELEGATION_CLIENT_CA_FILE": "client-ca.pem",
+	}
+	configuration, err := load(mapLookup(baseline))
+	if err != nil || configuration.DelegationRegistryFile != "services.json" || configuration.DelegationAuditRetention != 90*24*time.Hour {
+		t.Fatalf("delegation configuration=%#v,%v", configuration, err)
+	}
+	for _, key := range []string{"JOBMAN_CONTROL_TLS_CERT_FILE", "JOBMAN_CONTROL_DELEGATION_CLIENT_CA_FILE", "JOBMAN_CONTROL_DELEGATION_REGISTRY_FILE"} {
+		copyValues := make(map[string]string, len(baseline))
+		for name, value := range baseline {
+			copyValues[name] = value
+		}
+		delete(copyValues, key)
+		if _, loadErr := load(mapLookup(copyValues)); loadErr == nil {
+			t.Fatalf("missing %s accepted", key)
+		}
+	}
+	baseline["JOBMAN_CONTROL_DELEGATION_AUDIT_RETENTION"] = "24h"
+	if _, err = load(mapLookup(baseline)); err == nil {
+		t.Fatal("short audit retention accepted")
+	}
+}

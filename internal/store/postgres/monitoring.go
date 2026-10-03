@@ -28,7 +28,7 @@ const jobSelect = `
    j.completed_at, j.completed_recorded_at, COALESCE(j.completed_provenance, ''),
    COALESCE(current_execution.run_id, ''), COALESCE(current_execution.run_number, ''),
    COALESCE(current_execution.execution_id, ''), COALESCE(j.collection_id::text, ''), j.collection_index,
-   COALESCE(j.graph_id::text, ''), j.graph_index, COALESCE(j.graph_disposition, '')
+   COALESCE(j.graph_id::text, ''), j.graph_index, COALESCE(j.graph_disposition, ''), transaction_timestamp()
  FROM jobs AS j JOIN namespaces AS n ON n.id = j.namespace_id
  JOIN principals AS job_owner ON job_owner.id = j.owner_principal_id
  LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
@@ -43,7 +43,7 @@ const jobSelect = `
 
 // Capabilities returns non-sensitive source identity and implemented features.
 func (store *Store) Capabilities(ctx context.Context) (domain.ControlCapabilities, error) {
-	result := domain.ControlCapabilities{ContractVersions: []string{"jobman.control/v1alpha1"}, Features: []string{"namespace-discovery", "role-unions", "job-monitoring", "namespace-summary", "group-catalogs", "bounded-graph-monitoring"}, MaximumPageSize: domain.MaximumJobListLimit}
+	result := domain.ControlCapabilities{ContractVersions: []string{"jobman.control/v1alpha1"}, Features: []string{"namespace-discovery", "role-unions", "job-monitoring", "namespace-summary", "group-catalogs", "bounded-graph-monitoring", "read-delegation"}, MaximumPageSize: domain.MaximumJobListLimit}
 	if err := store.pool.QueryRow(ctx, `SELECT i.id::text, r.restore_epoch::text, statement_timestamp()
  FROM control_instance AS i CROSS JOIN service_recovery_state AS r WHERE i.singleton AND r.singleton`).Scan(&result.InstanceID, &result.RecoveryEpoch, &result.ServerTime); err != nil {
 		return domain.ControlCapabilities{}, fmt.Errorf("discover Control capabilities: %w", err)
@@ -54,12 +54,19 @@ func (store *Store) Capabilities(ctx context.Context) (domain.ControlCapabilitie
 
 // NamespaceSummary computes authorized complete counts in one statement.
 func (store *Store) NamespaceSummary(ctx context.Context, principal domain.Principal, namespace string, from, before *time.Time) (domain.NamespaceSummary, error) {
-	if (from == nil) != (before == nil) || (from != nil && !from.Before(*before)) {
-		return domain.NamespaceSummary{}, errors.New("completion window is invalid")
-	}
-	var result domain.NamespaceSummary
-	var phases, outcomes []byte
-	err := store.pool.QueryRow(ctx, `
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.NamespaceSummary, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityJobsRead)
+		if authErr != nil {
+			return domain.NamespaceSummary{}, authErr
+		}
+		principal = authorization.canonical
+
+		if (from == nil) != (before == nil) || (from != nil && !from.Before(*before)) {
+			return domain.NamespaceSummary{}, errors.New("completion window is invalid")
+		}
+		var result domain.NamespaceSummary
+		var phases, outcomes []byte
+		err := tx.QueryRow(ctx, `
  WITH scope AS (
    SELECT n.id,n.name FROM namespaces AS n
    JOIN authorized_memberships AS m ON m.namespace_id=n.id
@@ -86,20 +93,21 @@ func (store *Store) NamespaceSummary(ctx context.Context, principal domain.Princ
    COALESCE((SELECT jsonb_object_agg(outcome,total) FROM (SELECT outcome,count(*)::text AS total FROM scoped_jobs WHERE phase='terminal' AND completed_at >= bounds.since AND completed_at < bounds.until GROUP BY outcome) AS counts),'{}'::jsonb)
  FROM scope CROSS JOIN bounds
  `, principal.Issuer, principal.Subject, namespace, from, before).Scan(&result.NamespaceID, &result.Namespace, &result.AsOf, &result.CompletedFrom, &result.CompletedBefore, &result.Total, &result.Active, &result.AwaitingExecution, &result.EvidenceAttention, &result.MissingCompletionTime, &phases, &outcomes)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.NamespaceSummary{}, domain.ErrForbidden
-	}
-	if err != nil {
-		return domain.NamespaceSummary{}, fmt.Errorf("query namespace summary: %w", err)
-	}
-	if err = json.Unmarshal(phases, &result.ByPhase); err != nil {
-		return domain.NamespaceSummary{}, fmt.Errorf("decode phase counts: %w", err)
-	}
-	if err = json.Unmarshal(outcomes, &result.ByOutcome); err != nil {
-		return domain.NamespaceSummary{}, fmt.Errorf("decode outcome counts: %w", err)
-	}
-	result.AsOf = result.AsOf.UTC()
-	result.CompletedFrom = result.CompletedFrom.UTC()
-	result.CompletedBefore = result.CompletedBefore.UTC()
-	return result, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.NamespaceSummary{}, domain.ErrForbidden
+		}
+		if err != nil {
+			return domain.NamespaceSummary{}, fmt.Errorf("query namespace summary: %w", err)
+		}
+		if err = json.Unmarshal(phases, &result.ByPhase); err != nil {
+			return domain.NamespaceSummary{}, fmt.Errorf("decode phase counts: %w", err)
+		}
+		if err = json.Unmarshal(outcomes, &result.ByOutcome); err != nil {
+			return domain.NamespaceSummary{}, fmt.Errorf("decode outcome counts: %w", err)
+		}
+		result.AsOf = result.AsOf.UTC()
+		result.CompletedFrom = result.CompletedFrom.UTC()
+		result.CompletedBefore = result.CompletedBefore.UTC()
+		return result, nil
+	})
 }

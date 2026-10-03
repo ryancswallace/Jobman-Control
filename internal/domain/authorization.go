@@ -59,15 +59,20 @@ func EffectiveCapabilities(roles []string) []string {
 
 // NamespaceAccess is a current authorization snapshot, not a reusable grant.
 type NamespaceAccess struct {
-	ID                   string   `json:"id"`
-	Name                 string   `json:"name"`
-	Roles                []string `json:"roles"`
-	Capabilities         []string `json:"capabilities"`
-	AuthorizationVersion string   `json:"authorizationVersion"`
+	AuthorizationCheckedAt  *time.Time `json:"authorizationCheckedAt,omitempty"`
+	LastDirectoryVerifiedAt *time.Time `json:"lastDirectoryVerifiedAt,omitempty"`
+	AuthorizationExpiresAt  *time.Time `json:"authorizationExpiresAt,omitempty"`
+	AuthorizationStatus     string     `json:"authorizationStatus,omitempty"`
+	ID                      string     `json:"id"`
+	Name                    string     `json:"name"`
+	Roles                   []string   `json:"roles"`
+	Capabilities            []string   `json:"capabilities"`
+	AuthorizationVersion    string     `json:"authorizationVersion"`
 }
 
 // PrincipalAccess is bounded current-principal discovery.
 type PrincipalAccess struct {
+	DirectoryID            string
 	PrincipalID            string
 	Principal              Principal
 	DisplayName            string

@@ -28,6 +28,9 @@ func (store *Store) EnsureBootstrapIdentity(
 	ctx context.Context,
 	identity domain.BootstrapIdentity,
 ) error {
+	if identity.Principal.Delegation != nil {
+		return domain.ErrForbidden
+	}
 	principalID, err := store.newID()
 	if err != nil {
 		return err

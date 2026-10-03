@@ -118,7 +118,7 @@ func TestInvalidGroupQueries(t *testing.T) {
 	t.Parallel()
 	handler := newTestHandler(t, &groupRepository{}, 1024)
 	for _, path := range []string{
-		"collections?limit=201", "collections?limit=1&limit=2", "collections?unknown=x", "collections?arrayMode=unknown", "collections?createdBefore=no", "collections?pageToken=invalid", "collections?limit=", "graphs?arrayMode=individual",
+		"collections?limit=201", "collections?limit=%zz", "graphs/" + testJobID + "/summary?ignored=%zz", "graphs/" + testJobID + "/nodes?afterIndex=%zz", "graphs/" + testJobID + "/dependencies?nodeId=%zz", "graphs/" + testJobID + "/neighborhood?nodeId=" + testJobID + "&maxNodes=%zz", "collections?limit=1&limit=2", "collections?unknown=x", "collections?arrayMode=unknown", "collections?createdBefore=no", "collections?pageToken=invalid", "collections?limit=", "graphs?arrayMode=individual",
 		"collections/bad/summary", "graphs/" + testJobID + "/summary?limit=1",
 		"collections/" + testJobID + "/items?afterIndex=10000", "graphs/" + testJobID + "/nodes?limit=0",
 		"graphs/" + testJobID + "/dependencies?direction=incoming", "graphs/" + testJobID + "/dependencies?nodeId=bad", "graphs/" + testJobID + "/dependencies?limit=501", "graphs/" + testJobID + "/dependencies?pageToken=" + strings.Repeat("a", 257),

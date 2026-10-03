@@ -11,6 +11,8 @@ import (
 var (
 	// ErrForbidden means the principal cannot access the requested namespace.
 	ErrForbidden = errors.New("forbidden")
+	// ErrAuthorizationUnavailable means current authority cannot be verified.
+	ErrAuthorizationUnavailable = errors.New("authorization unavailable")
 	// ErrNotFound means the authorized lookup found no resource.
 	ErrNotFound = errors.New("not found")
 	// ErrIdempotencyConflict means an idempotency key was reused for different intent.
@@ -46,8 +48,9 @@ var knownJobPhases = map[string]struct{}{
 
 // Principal is the stable identity asserted by the authentication layer.
 type Principal struct {
-	Issuer  string
-	Subject string
+	Delegation *DelegatedActor
+	Issuer     string
+	Subject    string
 }
 
 // DevelopmentIdentity describes the one explicitly configured development
@@ -117,6 +120,7 @@ type ExecutionFeatures struct {
 
 // Job is the current durable shared job snapshot.
 type Job struct {
+	AsOf                  time.Time
 	NamespaceID           string
 	Owner                 *JobOwner
 	Imported              bool
@@ -312,6 +316,7 @@ type JobCursor struct {
 
 // JobPage contains one page and an optional continuation cursor.
 type JobPage struct {
+	AsOf       time.Time
 	Jobs       []Job
 	NextCursor *JobCursor
 }

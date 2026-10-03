@@ -208,3 +208,9 @@ agent output as untrusted data.
 Collection and graph catalogs, summary-only reads, child pages, dependency pages,
 and bounded neighborhoods are documented in [Group monitoring](GROUP_MONITORING.md).
 These additive routes keep legacy complete group documents compatible.
+
+## Delegated service reads
+
+See [Read-only service delegation](DELEGATION.md) for the exact mTLS/JWT route
+matrix, replay protection, current-authority checks, and directory proof fields.
+Job and job-list responses include a database transaction `asOf` timestamp.
