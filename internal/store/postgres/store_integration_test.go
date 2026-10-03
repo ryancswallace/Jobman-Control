@@ -905,11 +905,17 @@ func TestStoreArtifactIntegration(t *testing.T) {
  FROM execution_artifacts CROSS JOIN generate_series(1,10) number WHERE execution_id=$1 AND name='result'`, assignments[0].ExecutionID, strings.Repeat("<", 65536)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = pool.Exec(ctx, `INSERT INTO execution_artifacts(namespace_id,execution_id,name,store_name,store_version,object_key,byte_length,checksum,published_at)
+ SELECT namespace_id,execution_id,punctuation_name,store_name,store_version,object_key,byte_length,checksum,published_at
+ FROM execution_artifacts CROSS JOIN unnest(ARRAY['large.001','large_001','large0001']) punctuation_name WHERE execution_id=$1 AND name='result'`, assignments[0].ExecutionID); err != nil {
+		t.Fatal(err)
+	}
 	options := domain.ArtifactListOptions{Limit: 100}
 	seen := map[string]bool{}
+	previous := ""
 	for pages := 0; pages < 12; pages++ {
 		page, pageErr = store.ListArtifacts(ctx, principal, "research", created.Job.ID, options)
-		if pageErr != nil || page.Total != 11 || len(page.Items) == 0 {
+		if pageErr != nil || page.Total != 14 || len(page.Items) == 0 {
 			t.Fatalf("byte-bounded artifacts=%d/%d,%v", page.Total, len(page.Items), pageErr)
 		}
 		encoded, encodeErr := json.Marshal(page)
@@ -917,6 +923,10 @@ func TestStoreArtifactIntegration(t *testing.T) {
 			t.Fatalf("artifact page exceeded encoded budget=%d,%v", len(encoded), encodeErr)
 		}
 		for _, item := range page.Items {
+			if previous >= item.Name {
+				t.Fatalf("artifact cursor order is not portable byte order: %q then %q", previous, item.Name)
+			}
+			previous = item.Name
 			if seen[item.Name] {
 				t.Fatalf("artifact repeated at byte cursor: %s", item.Name)
 			}
@@ -935,7 +945,7 @@ func TestStoreArtifactIntegration(t *testing.T) {
 		}
 		options.AfterExecutionID, options.AfterName = parts[0], parts[1]
 	}
-	if len(seen) != 11 {
+	if len(seen) != 14 {
 		t.Fatalf("byte-bounded pagination lost artifacts: %d", len(seen))
 	}
 }

@@ -75,7 +75,9 @@ remain unchanged during an ordinary append.
 
 `GET /v1/namespaces/{namespace}/jobs/{jobId}/artifact-metadata` uses
 `artifacts.read`. Optional `runNumber` selects one actual run, `limit` is 1–100,
-and `pageToken` is an opaque execution/name tuple cursor. `ArtifactList` includes
+and `pageToken` is an opaque execution/name tuple cursor. The tuple uses UUID
+order followed by byte order for the name (`COLLATE "C"` in PostgreSQL),
+independent of the database locale. `ArtifactList` includes
 the same authority/read metadata, a complete filtered decimal-string `total`,
 bounded `items`, and `nextPageToken` when needed. Each page also caps the encoded
 item array at 2 MiB, counting JSON escaping. A byte-limited page continues after

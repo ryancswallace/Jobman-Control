@@ -10,3 +10,6 @@ $$;
 CREATE TRIGGER log_manifest_revision BEFORE UPDATE ON log_streams
  FOR EACH ROW EXECUTE FUNCTION bump_log_manifest_revision();
 CREATE INDEX log_chunks_offset_seek_idx ON log_chunks(execution_id,stream,byte_offset DESC,sequence DESC);
+
+-- Portable cursor ordering cannot depend on the database's configured locale.
+CREATE INDEX execution_artifacts_cursor_idx ON execution_artifacts(execution_id,name COLLATE "C");

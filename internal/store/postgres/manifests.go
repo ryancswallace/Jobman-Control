@@ -189,7 +189,7 @@ func (store *Store) ListArtifacts(ctx context.Context, principal domain.Principa
 		}
 		rows, err := tx.Query(ctx, `SELECT r.id::text,r.run_number,e.id::text,e.target_generation_id::text,a.name,a.store_name,a.store_version,a.object_key,a.byte_length,a.checksum,a.published_at
  FROM execution_artifacts a JOIN executions e ON e.id=a.execution_id JOIN runs r ON r.id=e.run_id
- WHERE r.job_id=$1 AND ($2::bigint=0 OR r.run_number=$2) AND (NULLIF($3,'')::uuid IS NULL OR (a.execution_id,a.name)>(NULLIF($3,'')::uuid,$4)) ORDER BY a.execution_id,a.name LIMIT $5`, jobID, options.RunNumber, options.AfterExecutionID, options.AfterName, options.Limit+1)
+ WHERE r.job_id=$1 AND ($2::bigint=0 OR r.run_number=$2) AND (NULLIF($3,'')::uuid IS NULL OR (a.execution_id,a.name COLLATE "C")>(NULLIF($3,'')::uuid,$4::text COLLATE "C")) ORDER BY a.execution_id,a.name COLLATE "C" LIMIT $5`, jobID, options.RunNumber, options.AfterExecutionID, options.AfterName, options.Limit+1)
 		if err != nil {
 			return result, err
 		}
