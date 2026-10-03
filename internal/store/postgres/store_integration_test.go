@@ -3,6 +3,7 @@ package postgres
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -896,6 +897,46 @@ func TestStoreArtifactIntegration(t *testing.T) {
 	page, pageErr := store.ListArtifacts(ctx, principal, "research", created.Job.ID, domain.ArtifactListOptions{RunNumber: 1, Limit: 1})
 	if pageErr != nil || page.Total != 1 || len(page.Items) != 1 || page.Items[0].RunID == "" || page.Items[0].TargetGenerationID == "" || !page.Items[0].PublishedAt.Equal(completed.ObservedAt.Truncate(time.Microsecond)) || page.AuthorizationVersion < 1 {
 		t.Fatalf("bounded artifact metadata=%#v,%v", page, pageErr)
+	}
+	// Legal 64 KiB keys can expand sixfold under JSON HTML escaping. Byte
+	// pagination must preserve all metadata without exceeding the client budget.
+	if _, err = pool.Exec(ctx, `INSERT INTO execution_artifacts(namespace_id,execution_id,name,store_name,store_version,object_key,byte_length,checksum,published_at)
+ SELECT namespace_id,execution_id,'large-'||to_char(number,'FM000'),store_name,store_version,$2,byte_length,checksum,published_at
+ FROM execution_artifacts CROSS JOIN generate_series(1,10) number WHERE execution_id=$1 AND name='result'`, assignments[0].ExecutionID, strings.Repeat("<", 65536)); err != nil {
+		t.Fatal(err)
+	}
+	options := domain.ArtifactListOptions{Limit: 100}
+	seen := map[string]bool{}
+	for pages := 0; pages < 12; pages++ {
+		page, pageErr = store.ListArtifacts(ctx, principal, "research", created.Job.ID, options)
+		if pageErr != nil || page.Total != 11 || len(page.Items) == 0 {
+			t.Fatalf("byte-bounded artifacts=%d/%d,%v", page.Total, len(page.Items), pageErr)
+		}
+		encoded, encodeErr := json.Marshal(page)
+		if encodeErr != nil || len(encoded) > maximumArtifactItemsJSON+16384 {
+			t.Fatalf("artifact page exceeded encoded budget=%d,%v", len(encoded), encodeErr)
+		}
+		for _, item := range page.Items {
+			if seen[item.Name] {
+				t.Fatalf("artifact repeated at byte cursor: %s", item.Name)
+			}
+			seen[item.Name] = true
+		}
+		if page.NextPageToken == "" {
+			break
+		}
+		cursor, decodeErr := base64.RawURLEncoding.DecodeString(page.NextPageToken)
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		parts := strings.Split(string(cursor), "\n")
+		if len(parts) != 2 {
+			t.Fatalf("invalid artifact cursor")
+		}
+		options.AfterExecutionID, options.AfterName = parts[0], parts[1]
+	}
+	if len(seen) != 11 {
+		t.Fatalf("byte-bounded pagination lost artifacts: %d", len(seen))
 	}
 }
 

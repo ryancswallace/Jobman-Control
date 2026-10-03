@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +13,9 @@ import (
 
 	"github.com/ryancswallace/jobman-control/internal/domain"
 )
+
+// Leave room for the small authority/envelope fields under downstream 4 MiB limits.
+const maximumArtifactItemsJSON = 2 << 20
 
 var manifestChecksumPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
@@ -190,21 +194,27 @@ func (store *Store) ListArtifacts(ctx context.Context, principal domain.Principa
 			return result, err
 		}
 		defer rows.Close()
+		encodedBytes := 2 // JSON array brackets.
 		for rows.Next() {
 			var item domain.BoundedArtifact
 			if scanErr := rows.Scan(&item.RunID, &item.RunNumber, &item.ExecutionID, &item.TargetGenerationID, &item.Name, &item.StoreName, &item.StoreVersion, &item.ObjectKey, &item.ByteLength, &item.Checksum, &item.PublishedAt); scanErr != nil {
 				return result, scanErr
 			}
 			item.PublishedAt = item.PublishedAt.UTC()
+			encoded, encodeErr := json.Marshal(item)
+			if encodeErr != nil || len(encoded)+2 > maximumArtifactItemsJSON {
+				return result, domain.ErrConflict
+			}
+			if len(result.Items) == options.Limit || len(result.Items) > 0 && encodedBytes+len(encoded)+1 > maximumArtifactItemsJSON {
+				last := result.Items[len(result.Items)-1]
+				result.NextPageToken = base64.RawURLEncoding.EncodeToString([]byte(last.ExecutionID + "\n" + last.Name))
+				break
+			}
+			encodedBytes += len(encoded) + 1 // Conservatively include an element separator.
 			result.Items = append(result.Items, item)
 		}
 		if rowsErr := rows.Err(); rowsErr != nil {
 			return result, rowsErr
-		}
-		if len(result.Items) > options.Limit {
-			result.Items = result.Items[:options.Limit]
-			last := result.Items[len(result.Items)-1]
-			result.NextPageToken = base64.RawURLEncoding.EncodeToString([]byte(last.ExecutionID + "\n" + last.Name))
 		}
 		return result, nil
 	})

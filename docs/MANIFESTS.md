@@ -77,7 +77,11 @@ remain unchanged during an ordinary append.
 `artifacts.read`. Optional `runNumber` selects one actual run, `limit` is 1–100,
 and `pageToken` is an opaque execution/name tuple cursor. `ArtifactList` includes
 the same authority/read metadata, a complete filtered decimal-string `total`,
-bounded `items`, and `nextPageToken` when needed. Each item carries actual run,
+bounded `items`, and `nextPageToken` when needed. Each page also caps the encoded
+item array at 2 MiB, counting JSON escaping. A byte-limited page continues after
+the last emitted tuple even when fewer than `limit` items were returned. The
+authority/envelope fields are additional small metadata; the complete response
+fits the Dashboard adapter's 4 MiB response limit. Each item carries actual run,
 execution, target-generation identity, declared artifact name, approved
 store/version, immutable object key, size, checksum, and source publication time.
 Artifact destinations retain their declared workload semantics; this route

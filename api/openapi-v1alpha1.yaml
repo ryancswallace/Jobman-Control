@@ -997,7 +997,7 @@ paths:
         - {name: pageToken, in: query, schema: {type: string, maxLength: 256}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 100}}
       responses:
-        "200": {description: Current bounded artifact metadata., content: {application/json: {schema: {$ref: "#/components/schemas/ArtifactList"}}}}
+        "200": {description: Current artifact metadata; encoded items are capped at 2 MiB, with a continuation token when the byte budget is reached., content: {application/json: {schema: {$ref: "#/components/schemas/ArtifactList"}}}}
         "400": {$ref: "#/components/responses/ClientError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/ClientError"}
