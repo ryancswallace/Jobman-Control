@@ -25,6 +25,8 @@
     "/\\b[0-9a-f]{32,}\\b/g"
   ],
   "words": [
+    "labfixture",
+    "PKIX",
 	"LDAPS",
 	"ntlmssp",
 	"FILETIME",

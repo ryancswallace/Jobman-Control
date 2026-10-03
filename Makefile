@@ -208,7 +208,7 @@ unittest: test
 integration-test: ## Require and run PostgreSQL integration tests.
 	@test -n "$(JOBMAN_CONTROL_TEST_DATABASE_URL)" || \
 		(echo 'JOBMAN_CONTROL_TEST_DATABASE_URL is required.' >&2; exit 2)
-	$(GO) test -race -count=1 ./internal/store/postgres ./tests/e2e
+	$(GO) test -race -count=1 ./internal/store/postgres ./tests/e2e ./devel/labfixture
 
 .PHONY: coverage coverage-check
 coverage: ## Write an atomic aggregate coverage profile.

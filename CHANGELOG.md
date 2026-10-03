@@ -7,6 +7,10 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Add an isolated synthetic Dashboard Lab source helper using normal Control
+  admission, delegation and authenticated directory reconciliation, with private
+  per-service material and bounded log/group acceptance fixtures.
+
 - Bounded indexed log tail/offset metadata and artifact pages with actual
   run/execution/generation identity, persisted manifest revisions, exact decimal
   offsets, zero-byte terminal chunks, and current authorization snapshot fields.

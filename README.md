@@ -225,3 +225,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
 [release guide]: RELEASE.md
 [security model]: docs/SECURITY_MODEL.md
 [security policy]: SECURITY.md
+
+A separate [synthetic Dashboard Lab helper](devel/labfixture/README.md) exercises
+real delegated reads and directory reconciliation without changing existing Lab services.
