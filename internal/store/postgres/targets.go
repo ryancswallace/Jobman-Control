@@ -490,7 +490,7 @@ func insertTargetGeneration(
 			control_transport, runtimes, operating_systems, architectures, capabilities,
 			log_store_name, log_store_version, artifact_stores, provider
 		) VALUES ($1, $2, $3, $4, $5, 'agent-api', $6, $7, $8, $9,
-			NULLIF($10, ''), NULLIF($11, 0), $12::jsonb, $13::jsonb)
+			NULLIF($10, ''), NULLIF($11::bigint, 0), $12::jsonb, $13::jsonb)
 	`, generationID, namespaceID, targetID, generation, spec.ExecutionBackend,
 		nonNilStrings(spec.Runtimes), nonNilStrings(spec.OperatingSystems),
 		nonNilStrings(spec.Architectures), nonNilStrings(spec.Capabilities),

@@ -43,7 +43,7 @@ const jobSelect = `
 
 // Capabilities returns non-sensitive source identity and implemented features.
 func (store *Store) Capabilities(ctx context.Context) (domain.ControlCapabilities, error) {
-	result := domain.ControlCapabilities{ContractVersions: []string{"jobman.control/v1alpha1"}, Features: []string{"namespace-discovery", "role-unions", "job-monitoring", "namespace-summary", "group-catalogs", "bounded-graph-monitoring", "read-delegation", "directory-authorization", "bounded-log-manifests", "bounded-artifact-metadata"}, MaximumPageSize: domain.MaximumJobListLimit}
+	result := domain.ControlCapabilities{ContractVersions: []string{"jobman.control/v1alpha1"}, Features: []string{"namespace-discovery", "role-unions", "job-monitoring", "namespace-summary", "group-catalogs", "bounded-graph-monitoring", "read-delegation", "directory-authorization", "bounded-log-manifests", "bounded-artifact-metadata", "target-catalogs"}, MaximumPageSize: domain.MaximumJobListLimit}
 	if err := store.pool.QueryRow(ctx, `SELECT i.id::text, r.restore_epoch::text, statement_timestamp()
  FROM control_instance AS i CROSS JOIN service_recovery_state AS r WHERE i.singleton AND r.singleton`).Scan(&result.InstanceID, &result.RecoveryEpoch, &result.ServerTime); err != nil {
 		return domain.ControlCapabilities{}, fmt.Errorf("discover Control capabilities: %w", err)

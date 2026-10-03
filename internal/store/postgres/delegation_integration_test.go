@@ -92,7 +92,15 @@ func TestDelegatedAuthorityIntegration(t *testing.T) {
 	if err != nil || access.PrincipalID != principalID || access.DirectoryID != directoryID || access.Principal.Subject != alias.Subject || len(access.Namespaces) != 1 || access.Namespaces[0].AuthorizationStatus != "verified" || access.Namespaces[0].AuthorizationExpiresAt == nil || !slices.Contains(access.Namespaces[0].Capabilities, domain.CapabilityMembershipsManage) {
 		t.Fatalf("verified discovery=%#v,%v", access, err)
 	}
+	principal.Delegation.Operation = domain.CapabilityTargetsRead
+	catalog, catalogErr := store.ListTargetCatalog(ctx, principal, "research", domain.TargetCatalogOptions{Limit: 1})
+	if catalogErr != nil || catalog.Total != 1 || len(catalog.Items) != 1 || catalog.AuthorizationExpiresAt == nil || catalog.AuthorizationVersion < 1 {
+		t.Fatalf("delegated target catalog=%#v,%v", catalog, catalogErr)
+	}
 	principal.Delegation.Operation = domain.CapabilityJobsRead
+	if _, catalogErr = store.GetTargetSnapshot(ctx, principal, "research", catalog.Items[0].ID); !errors.Is(catalogErr, domain.ErrForbidden) {
+		t.Fatalf("target detail operation bypass=%v", catalogErr)
+	}
 	// Even a represented namespace administrator cannot mutate through delegation.
 	if _, manifestErr := store.ListLogChunks(ctx, principal, "research", job.ID, domain.LogChunkOptions{Stream: "stdout", Limit: 1}); !errors.Is(manifestErr, domain.ErrForbidden) {
 		t.Fatalf("manifest operation bypass=%v", manifestErr)

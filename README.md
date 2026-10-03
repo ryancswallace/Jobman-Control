@@ -228,3 +228,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
 
 A separate [synthetic Dashboard Lab helper](devel/labfixture/README.md) exercises
 real delegated reads and directory reconciliation without changing existing Lab services.
+
+[Bounded target monitoring](docs/TARGET_CATALOG.md) provides complete target counts,
+stable cursors and source authorization snapshots.

@@ -249,6 +249,50 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/ClientError"}
         "409": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/target-catalog:
+    get:
+      operationId: listTargetCatalog
+      parameters:
+        - {$ref: "#/components/parameters/Namespace"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+        - {name: createdBefore, in: query, schema: {type: string, format: date-time}, description: Inclusive creation cutoff retained inside the cursor.}
+        - {name: pageToken, in: query, schema: {type: string, maxLength: 1024}}
+      responses:
+        "200": {description: Complete counts and bounded target configuration with current authorization., content: {application/json: {schema: {$ref: "#/components/schemas/TargetCatalog"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/target-catalog/{targetId}:
+    get:
+      operationId: getTargetSnapshot
+      parameters:
+        - {$ref: "#/components/parameters/Namespace"}
+        - {name: targetId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: One target resolved by UUID inside its current authorized namespace., content: {application/json: {schema: {$ref: "#/components/schemas/TargetSnapshot"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/target-catalog/{targetId}/partitions:
+    get:
+      operationId: listTargetPartitions
+      parameters:
+        - {$ref: "#/components/parameters/Namespace"}
+        - {name: targetId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: generationId, in: query, schema: {type: string, format: uuid}, description: Required on the first page; a continuation token preserves it. Must remain the current generation.}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+        - {name: pageToken, in: query, schema: {type: string, maxLength: 1024}}
+      responses:
+        "200": {description: Complete partition count and bounded generation-pinned page., content: {application/json: {schema: {$ref: "#/components/schemas/TargetPartitionList"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/targets:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
@@ -1930,6 +1974,87 @@ components:
         byteLength: {type: integer, minimum: 0}
         checksum: {$ref: "#/components/schemas/Digest"}
         capturedAt: {type: string, format: date-time}
+    NamespaceReadAuthority:
+      type: object
+      required: [asOf, namespace, namespaceId, recoveryEpoch, authorizationVersion, authorizationCheckedAt]
+      properties:
+        asOf: {type: string, format: date-time}
+        namespace: {$ref: "#/components/schemas/Name"}
+        namespaceId: {type: string, format: uuid}
+        recoveryEpoch: {$ref: "#/components/schemas/DecimalCount"}
+        authorizationVersion: {$ref: "#/components/schemas/DecimalCount"}
+        authorizationCheckedAt: {type: string, format: date-time}
+        authorizationExpiresAt: {type: string, format: date-time}
+    CatalogStoreReference:
+      type: object
+      required: [name, version]
+      properties:
+        name: {type: string}
+        version: {$ref: "#/components/schemas/DecimalCount"}
+    CatalogTargetGeneration:
+      type: object
+      required: [id, number, executionBackend, transport, runtimes, operatingSystems, architectures, capabilities, partitions, partitionCount, partitionsTruncated, artifactStores, provider]
+      properties:
+        id: {type: string, format: uuid}
+        number: {$ref: "#/components/schemas/DecimalCount"}
+        executionBackend: {enum: [subprocess, slurm]}
+        transport: {const: agent-api}
+        runtimes: {type: array, items: {type: string}}
+        operatingSystems: {type: array, items: {type: string}}
+        architectures: {type: array, items: {type: string}}
+        capabilities: {type: array, items: {type: string}}
+        partitions: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/Partition"}}
+        partitionCount: {$ref: "#/components/schemas/DecimalCount"}
+        partitionsTruncated: {type: boolean}
+        logStore: {$ref: "#/components/schemas/CatalogStoreReference"}
+        artifactStores: {type: array, items: {$ref: "#/components/schemas/CatalogStoreReference"}}
+        provider: {$ref: "#/components/schemas/TargetProvider"}
+    CatalogTarget:
+      type: object
+      required: [id, name, kind, state, revision, createdAt, updatedAt, generation]
+      properties:
+        id: {type: string, format: uuid}
+        name: {$ref: "#/components/schemas/Name"}
+        kind: {enum: [host, slurm]}
+        state: {enum: [active, draining, disabled, retired]}
+        revision: {$ref: "#/components/schemas/DecimalCount"}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        generation: {$ref: "#/components/schemas/CatalogTargetGeneration"}
+    TargetCatalog:
+      allOf:
+        - {$ref: "#/components/schemas/NamespaceReadAuthority"}
+        - type: object
+          required: [apiVersion, kind, createdBefore, total, items]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: TargetCatalog}
+            createdBefore: {type: string, format: date-time}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            items: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/CatalogTarget"}, description: Also bounded at 2 MiB of encoded JSON.}
+            nextPageToken: {type: string}
+    TargetSnapshot:
+      allOf:
+        - {$ref: "#/components/schemas/NamespaceReadAuthority"}
+        - type: object
+          required: [apiVersion, kind, target]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: TargetSnapshot}
+            target: {$ref: "#/components/schemas/CatalogTarget"}
+    TargetPartitionList:
+      allOf:
+        - {$ref: "#/components/schemas/NamespaceReadAuthority"}
+        - type: object
+          required: [apiVersion, kind, targetId, generationId, total, items]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: TargetPartitionList}
+            targetId: {type: string, format: uuid}
+            generationId: {type: string, format: uuid}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            items: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/Partition"}}
+            nextPageToken: {type: string}
     ManifestAuthority:
       type: object
       required: [asOf, namespace, namespaceId, jobId, recoveryEpoch, authorizationVersion, authorizationCheckedAt]

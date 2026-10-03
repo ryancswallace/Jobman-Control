@@ -218,3 +218,6 @@ reconciliation, operator mapping/transition, and stale-proof failure behavior.
 See [Bounded log and artifact metadata](MANIFESTS.md) for indexed tail/range
 selection, immutable chunk identity, and decimal-safe cursor contracts.
 Job and job-list responses include a database transaction `asOf` timestamp.
+
+See [Bounded target monitoring](TARGET_CATALOG.md) for complete target catalogs
+and namespace-authorized immutable UUID details.

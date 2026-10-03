@@ -12,7 +12,7 @@ func delegationRouteOperation(pattern string) string {
 		return domain.CapabilityJobsRead
 	case "GET /v1/namespaces/{namespace}/collections", "GET /v1/namespaces/{namespace}/collections/{collectionID}", "GET /v1/namespaces/{namespace}/collections/{collectionID}/summary", "GET /v1/namespaces/{namespace}/collections/{collectionID}/items", "GET /v1/namespaces/{namespace}/graphs", "GET /v1/namespaces/{namespace}/graphs/{graphID}", "GET /v1/namespaces/{namespace}/graphs/{graphID}/summary", "GET /v1/namespaces/{namespace}/graphs/{graphID}/nodes", "GET /v1/namespaces/{namespace}/graphs/{graphID}/dependencies", "GET /v1/namespaces/{namespace}/graphs/{graphID}/neighborhood":
 		return domain.CapabilityGroupsRead
-	case "GET /v1/namespaces/{namespace}/targets", "GET /v1/namespaces/{namespace}/targets/{target}":
+	case "GET /v1/namespaces/{namespace}/target-catalog/{targetID}/partitions", "GET /v1/namespaces/{namespace}/target-catalog", "GET /v1/namespaces/{namespace}/target-catalog/{targetID}", "GET /v1/namespaces/{namespace}/targets", "GET /v1/namespaces/{namespace}/targets/{target}":
 		return domain.CapabilityTargetsRead
 	case "GET /v1/namespaces/{namespace}/jobs/{jobID}/logs", "GET /v1/namespaces/{namespace}/jobs/{jobID}/log-chunks":
 		return domain.CapabilityLogsRead

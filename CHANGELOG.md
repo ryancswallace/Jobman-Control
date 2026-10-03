@@ -7,6 +7,11 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Add indexed bounded target catalogs and immutable UUID details with complete
+  counts, stable creation cutoffs, decimal generation/store versions and current
+  authorization snapshots, preserving legacy target routes. Large partition sets
+  have explicit preview counts and generation-pinned traversal.
+
 - Add an isolated synthetic Dashboard Lab source helper using normal Control
   admission, delegation and authenticated directory reconciliation, with private
   per-service material and bounded log/group acceptance fixtures.

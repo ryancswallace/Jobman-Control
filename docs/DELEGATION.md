@@ -72,7 +72,7 @@ of authority; Control resolves and checks their immutable namespace identity.
 | Namespace `/summary`, `/jobs`, `/jobs/{jobID}` | `jobs.read` |
 | Collection catalog, complete document, summary, and items | `groups.read` |
 | Graph catalog, complete document, summary, nodes, dependencies, neighborhood | `groups.read` |
-| Namespace `/targets` and `/targets/{target}` | `targets.read` |
+| Namespace `/targets`, `/targets/{target}`, `/target-catalog`, `/target-catalog/{targetID}`, and its `/partitions` | `targets.read` |
 | Job `/logs` metadata | `logs.read` |
 | Job `/artifacts` metadata | `artifacts.read` |
 | Job `/log-chunks` bounded tail/range metadata | `logs.read` |
