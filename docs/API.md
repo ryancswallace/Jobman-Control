@@ -215,4 +215,6 @@ See [Read-only service delegation](DELEGATION.md) for the exact mTLS/JWT route
 matrix, replay protection, current-authority checks, and directory proof fields.
 See [Active Directory authorization](DIRECTORY.md) for authoritative direct-group
 reconciliation, operator mapping/transition, and stale-proof failure behavior.
+See [Bounded log and artifact metadata](MANIFESTS.md) for indexed tail/range
+selection, immutable chunk identity, and decimal-safe cursor contracts.
 Job and job-list responses include a database transaction `asOf` timestamp.

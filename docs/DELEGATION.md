@@ -75,6 +75,8 @@ of authority; Control resolves and checks their immutable namespace identity.
 | Namespace `/targets` and `/targets/{target}` | `targets.read` |
 | Job `/logs` metadata | `logs.read` |
 | Job `/artifacts` metadata | `artifacts.read` |
+| Job `/log-chunks` bounded tail/range metadata | `logs.read` |
+| Job `/artifact-metadata` bounded output metadata | `artifacts.read` |
 
 `evidence.read` is reserved in the service capability catalog; it does not create
 an evidence endpoint. New routes remain denied until explicitly added to the

@@ -14,9 +14,9 @@ func delegationRouteOperation(pattern string) string {
 		return domain.CapabilityGroupsRead
 	case "GET /v1/namespaces/{namespace}/targets", "GET /v1/namespaces/{namespace}/targets/{target}":
 		return domain.CapabilityTargetsRead
-	case "GET /v1/namespaces/{namespace}/jobs/{jobID}/logs":
+	case "GET /v1/namespaces/{namespace}/jobs/{jobID}/logs", "GET /v1/namespaces/{namespace}/jobs/{jobID}/log-chunks":
 		return domain.CapabilityLogsRead
-	case "GET /v1/namespaces/{namespace}/jobs/{jobID}/artifacts":
+	case "GET /v1/namespaces/{namespace}/jobs/{jobID}/artifacts", "GET /v1/namespaces/{namespace}/jobs/{jobID}/artifact-metadata":
 		return domain.CapabilityArtifactsRead
 	default:
 		return ""

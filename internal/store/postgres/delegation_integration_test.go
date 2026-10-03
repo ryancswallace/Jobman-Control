@@ -94,6 +94,15 @@ func TestDelegatedAuthorityIntegration(t *testing.T) {
 	}
 	principal.Delegation.Operation = domain.CapabilityJobsRead
 	// Even a represented namespace administrator cannot mutate through delegation.
+	if _, manifestErr := store.ListLogChunks(ctx, principal, "research", job.ID, domain.LogChunkOptions{Stream: "stdout", Limit: 1}); !errors.Is(manifestErr, domain.ErrForbidden) {
+		t.Fatalf("manifest operation bypass=%v", manifestErr)
+	}
+	principal.Delegation.Operation = domain.CapabilityLogsRead
+	manifest, manifestErr := store.ListLogChunks(ctx, principal, "research", job.ID, domain.LogChunkOptions{Stream: "stdout", Limit: 1})
+	if manifestErr != nil || manifest.State != "not_captured" || manifest.ManifestRevision != 0 || manifest.AuthorizationExpiresAt == nil || manifest.AuthorizationVersion < 1 {
+		t.Fatalf("delegated absent manifest=%#v,%v", manifest, manifestErr)
+	}
+	principal.Delegation.Operation = domain.CapabilityJobsRead
 	for _, mutate := range []func() error{
 		func() error {
 			_, e := store.CancelJob(ctx, principal, "research", job.ID, "delegated-cancel", "sha256:"+strings.Repeat("2", 64))
@@ -178,6 +187,10 @@ func TestDelegatedAuthorityIntegration(t *testing.T) {
 	}
 	if _, err = store.GetJob(ctx, owner, "research", job.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("ordinary client bypassed managed namespace=%v", err)
+	}
+	principal.Delegation.Operation = domain.CapabilityLogsRead
+	if _, err = store.ListLogChunks(ctx, principal, "research", job.ID, domain.LogChunkOptions{Stream: "stdout", Limit: 1}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("bounded logs survived directory removal=%v", err)
 	}
 	principal.Delegation.Operation = domain.CapabilityNamespaceRead
 	empty, err := store.CurrentPrincipal(ctx, principal, "", 50)

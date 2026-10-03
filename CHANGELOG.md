@@ -7,6 +7,10 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Bounded indexed log tail/offset metadata and artifact pages with actual
+  run/execution/generation identity, persisted manifest revisions, exact decimal
+  offsets, zero-byte terminal chunks, and current authorization snapshot fields.
+
 - Authenticated LDAPS reconciliation of direct AD group contributions, approved
   preserved-principal aliases, versioned configuration preview/transition,
   complete range validation, atomic revocation/audit, and recovery fencing.

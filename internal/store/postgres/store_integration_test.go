@@ -253,7 +253,7 @@ func TestStoreIntegration(t *testing.T) {
 	assertTableCount(ctx, t, pool, "audit_events", 14)
 	assertTableCount(ctx, t, pool, "assignments", 2)
 	assertTableCount(ctx, t, pool, "log_streams", 4)
-	assertTableCount(ctx, t, pool, "log_chunks", 5)
+	assertTableCount(ctx, t, pool, "log_chunks", 6)
 }
 
 func TestStoreSlurmExecutionIntegration(t *testing.T) {
@@ -690,6 +690,14 @@ func TestGraphsAndProductionControlsIntegration(t *testing.T) {
 	if err != nil || imported.Job.Phase != "terminal" || imported.Job.Outcome != "success" {
 		t.Fatalf("ImportCompletedHistory() = %#v, %v", imported, err)
 	}
+	missingLogs, missingErr := store.ListLogChunks(ctx, principal, "research", imported.Job.ID, domain.LogChunkOptions{Stream: "stdout", Limit: 1})
+	if missingErr != nil || missingLogs.State != "not_captured" || missingLogs.ManifestRevision != 0 || missingLogs.RunID != "" || missingLogs.RunNumber != 0 || missingLogs.ExecutionID != "" || len(missingLogs.Chunks) != 0 {
+		t.Fatalf("imported job fabricated log/run identity=%#v,%v", missingLogs, missingErr)
+	}
+	pastEmpty := int64(1)
+	if _, missingErr = store.ListLogChunks(ctx, principal, "research", imported.Job.ID, domain.LogChunkOptions{Stream: "stdout", FromOffset: &pastEmpty, Limit: 1}); !errors.Is(missingErr, domain.ErrConflict) {
+		t.Fatalf("offset beyond absent stream accepted=%v", missingErr)
+	}
 	if _, err = store.ImportCompletedHistory(ctx, principal, "history-import-second", false, history); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("duplicate history provenance error = %v", err)
 	}
@@ -885,6 +893,10 @@ func TestStoreArtifactIntegration(t *testing.T) {
 		artifacts[0].Name != artifact.Name || artifacts[0].Checksum != artifact.Checksum {
 		t.Fatalf("GetJobArtifacts() = %#v, %v", artifacts, err)
 	}
+	page, pageErr := store.ListArtifacts(ctx, principal, "research", created.Job.ID, domain.ArtifactListOptions{RunNumber: 1, Limit: 1})
+	if pageErr != nil || page.Total != 1 || len(page.Items) != 1 || page.Items[0].RunID == "" || page.Items[0].TargetGenerationID == "" || !page.Items[0].PublishedAt.Equal(completed.ObservedAt.Truncate(time.Microsecond)) || page.AuthorizationVersion < 1 {
+		t.Fatalf("bounded artifact metadata=%#v,%v", page, pageErr)
+	}
 }
 
 func testConcurrentIdempotency(
@@ -989,6 +1001,10 @@ func testExecutionLifecycle(
 	if err != nil || len(streams) != 0 {
 		t.Fatalf("GetJobLogs(gapped) = %#v, %v", streams, err)
 	}
+	gapped, gapErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", Limit: 1})
+	if gapErr != nil || len(gapped.Chunks) != 0 || gapped.LastSequence != 0 || gapped.State != "open" || gapped.ManifestRevision < 1 || gapped.ExecutionID != assignment.ExecutionID {
+		t.Fatalf("bounded gap projection=%#v,%v", gapped, gapErr)
+	}
 	firstChunk := terminalChunk
 	firstChunk.Sequence = 1
 	firstChunk.ObjectKey = fmt.Sprintf(
@@ -998,6 +1014,11 @@ func testExecutionLifecycle(
 	firstChunk.ByteOffset = 0
 	firstChunk.Complete = false
 	firstChunk.DocumentDigest = "sha256:" + strings.Repeat("c", 64)
+	poisoned := firstChunk
+	poisoned.ObjectKey = strings.Replace(firstChunk.ObjectKey, "namespaces/research/", "namespaces/other/", 1)
+	if _, poisonErr := store.CommitLogChunk(ctx, identity, poisoned); !errors.Is(poisonErr, domain.ErrConflict) {
+		t.Fatalf("own-execution foreign-prefix publication=%v", poisonErr)
+	}
 	replayedLog, err = store.CommitLogChunk(ctx, identity, firstChunk)
 	if err != nil || replayedLog {
 		t.Fatalf("CommitLogChunk(fill gap) = %t, %v", replayedLog, err)
@@ -1011,6 +1032,25 @@ func testExecutionLifecycle(
 		streams[0].ByteLength != 6 || streams[0].State != "complete" {
 		t.Fatalf("GetJobLogs() = %#v, %v", streams, err)
 	}
+	tail, tailErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{RunNumber: 1, ExecutionID: assignment.ExecutionID, Stream: "stdout", TailBytes: 2, Limit: 100})
+	if tailErr != nil || tail.FromOffset != 4 || len(tail.Chunks) != 1 || tail.Chunks[0].Sequence != 2 || !tail.Chunks[0].Complete || tail.ManifestRevision <= gapped.ManifestRevision || tail.RecoveryEpoch < 1 || tail.AuthorizationVersion < 1 || tail.AsOf.IsZero() || tail.TargetGenerationID == "" {
+		t.Fatalf("bounded tail=%#v,%v", tail, tailErr)
+	}
+	offset := int64(1)
+	firstPage, pageErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", FromOffset: &offset, Limit: 1})
+	if pageErr != nil || len(firstPage.Chunks) != 1 || firstPage.Chunks[0].Sequence != 1 || firstPage.NextAfterSequence == nil || *firstPage.NextAfterSequence != 1 {
+		t.Fatalf("bounded offset page=%#v,%v", firstPage, pageErr)
+	}
+	secondPage, pageErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", AfterSequence: firstPage.NextAfterSequence, Limit: 1})
+	if pageErr != nil || len(secondPage.Chunks) != 1 || secondPage.Chunks[0].Sequence != 2 || secondPage.FromOffset != 3 || secondPage.NextAfterSequence != nil || secondPage.ManifestRevision != tail.ManifestRevision {
+		t.Fatalf("manifest replay changed immutable revision=%#v,%v", secondPage, pageErr)
+	}
+	if _, pageErr = store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", RunNumber: 999, Limit: 1}); !errors.Is(pageErr, domain.ErrNotFound) {
+		t.Fatalf("invented run returned=%v", pageErr)
+	}
+	if _, pageErr = store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", ExecutionID: "ffffffff-ffff-4fff-8fff-ffffffffffff", Limit: 1}); !errors.Is(pageErr, domain.ErrNotFound) {
+		t.Fatalf("wrong pinned execution returned=%v", pageErr)
+	}
 	exitCode := 0
 	completed := integrationEvent(
 		t, identity, assignment.ExecutionID, 2, "process.completed", "",
@@ -1019,7 +1059,26 @@ func testExecutionLifecycle(
 	if replayedEvent, err = store.RecordExecutionEvent(ctx, identity, completed); !errors.Is(err, domain.ErrConflict) || replayedEvent {
 		t.Fatalf("RecordExecutionEvent(completed without stderr) = %t, %v", replayedEvent, err)
 	}
-	commitEmptyTerminalLog(ctx, t, store, identity, assignment.ExecutionID, jobID, "stderr", "d")
+	stderrFirst := firstChunk
+	stderrFirst.Stream = "stderr"
+	stderrFirst.ObjectKey = strings.Replace(firstChunk.ObjectKey, "/stdout/", "/stderr/", 1)
+	stderrFirst.DocumentDigest = "sha256:" + strings.Repeat("d", 64)
+	if _, err = store.CommitLogChunk(ctx, identity, stderrFirst); err != nil {
+		t.Fatal(err)
+	}
+	stderrFinal := stderrFirst
+	stderrFinal.Sequence = 2
+	stderrFinal.ObjectKey = strings.Replace(stderrFirst.ObjectKey, "00000001.chunk", "00000002.chunk", 1)
+	stderrFinal.ByteOffset, stderrFinal.ByteLength, stderrFinal.Complete = 3, 0, true
+	stderrFinal.DocumentDigest = "sha256:" + strings.Repeat("e", 64)
+	if _, err = store.CommitLogChunk(ctx, identity, stderrFinal); err != nil {
+		t.Fatal(err)
+	}
+	endOffset := int64(3)
+	emptyTail, emptyErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stderr", FromOffset: &endOffset, Limit: 1})
+	if emptyErr != nil || emptyTail.State != "complete" || len(emptyTail.Chunks) != 1 || emptyTail.Chunks[0].Sequence != 2 || emptyTail.Chunks[0].ByteLength != 0 || !emptyTail.Chunks[0].Complete {
+		t.Fatalf("zero-byte terminal chunk at EOF lost=%#v,%v", emptyTail, emptyErr)
+	}
 	if replayedEvent, err = store.RecordExecutionEvent(ctx, identity, completed); err != nil || replayedEvent {
 		t.Fatalf("RecordExecutionEvent(completed) = %t, %v", replayedEvent, err)
 	}
@@ -1079,6 +1138,10 @@ func testAcceptedCancellation(
 	)
 	commitEmptyTerminalLog(ctx, t, store, identity, assignment.ExecutionID, jobID, "stdout", "e")
 	commitEmptyTerminalLog(ctx, t, store, identity, assignment.ExecutionID, jobID, "stderr", "f")
+	emptyTail, emptyErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stderr", TailBytes: 65536, Limit: 1})
+	if emptyErr != nil || emptyTail.State != "complete" || emptyTail.ByteLength != 0 || len(emptyTail.Chunks) != 1 || emptyTail.Chunks[0].ByteLength != 0 || !emptyTail.Chunks[0].Complete {
+		t.Fatalf("empty stream terminal chunk lost=%#v,%v", emptyTail, emptyErr)
+	}
 	if _, err = store.RecordExecutionEvent(ctx, identity, completed); err != nil {
 		t.Fatalf("RecordExecutionEvent(canceled) error = %v", err)
 	}

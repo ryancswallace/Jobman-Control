@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/jackc/pgx/v5"
@@ -19,6 +20,9 @@ func (store *Store) CommitLogChunk(
 	identity domain.AgentIdentity,
 	chunk domain.LogChunk,
 ) (bool, error) {
+	if chunk.Sequence < 1 || chunk.ByteOffset < 0 || chunk.ByteLength < 0 || chunk.ByteLength > 262144 || chunk.ByteOffset > math.MaxInt64-chunk.ByteLength || (chunk.Stream != "stdout" && chunk.Stream != "stderr") || !manifestChecksumPattern.MatchString(chunk.Checksum) || (chunk.ByteLength == 0 && !chunk.Complete) || chunk.Truncated && !chunk.Complete {
+		return false, domain.ErrConflict
+	}
 	replayed, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (bool, error) {
 		var namespace, jobID, assignedAgent, phase, approvedStore string
 		var approvedVersion int64

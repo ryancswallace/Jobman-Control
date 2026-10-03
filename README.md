@@ -41,6 +41,7 @@ submit work, enforce policy, and track results.
 | Identity | OIDC users, bounded namespace discovery, contributing role grants, and exact capability unions |
 | Directory authority | [Verified direct AD membership](docs/DIRECTORY.md), approved alias mapping, atomic revocation, and freshness enforcement |
 | Results | Ordered execution events plus checksummed log and artifact manifests for local filesystems, NFS, and S3 |
+| Bounded metadata | [Indexed log tails and artifact pages](docs/MANIFESTS.md) with immutable run/store bindings and current authorization proof |
 | Operations | Readiness, bounded Prometheus metrics, audit export, retention policy, restore holds, and completed-history import |
 
 ## How it fits
