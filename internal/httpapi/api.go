@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -88,6 +89,8 @@ func New(options Options) (http.Handler, error) {
 	mux.HandleFunc("GET /healthz", serverAPI.health)
 	mux.HandleFunc("GET /readyz", serverAPI.ready)
 	mux.HandleFunc("GET /metrics", serverAPI.metrics)
+	mux.HandleFunc("GET /v1/capabilities", serverAPI.capabilities)
+	mux.Handle("GET /v1/namespaces/{namespace}/summary", serverAPI.client(serverAPI.namespaceSummary))
 	mux.Handle("GET /v1/me", serverAPI.client(serverAPI.currentPrincipal))
 	mux.Handle("PUT /v1/namespaces/{namespace}/membership-grants/{grantID}", serverAPI.client(serverAPI.putMembershipGrant))
 	mux.Handle("DELETE /v1/namespaces/{namespace}/membership-grants/{grantID}", serverAPI.client(serverAPI.revokeMembershipGrant))
@@ -561,18 +564,37 @@ type jobPageToken struct {
 
 func readJobListOptions(request *http.Request) (domain.JobListOptions, error) {
 	query := request.URL.Query()
-	if len(query) > 3 {
+	if len(query) > 10 {
 		return domain.JobListOptions{}, errors.New("unsupported query parameter")
 	}
 	for name := range query {
-		if name != "limit" && name != "phase" && name != "pageToken" {
+		if name != "limit" && name != "phase" && name != "pageToken" && name != "outcome" && name != "ownerPrincipalId" && name != "completedFrom" && name != "completedBefore" && name != "createdBefore" && name != "jobId" && name != "confidence" {
 			return domain.JobListOptions{}, errors.New("unsupported query parameter")
 		}
 		if len(query[name]) != 1 {
 			return domain.JobListOptions{}, fmt.Errorf("%s must be specified once", name)
 		}
 	}
-	options := domain.JobListOptions{Limit: domain.DefaultJobListLimit, Phase: query.Get("phase")}
+	options := domain.JobListOptions{Limit: domain.DefaultJobListLimit, Phase: query.Get("phase"), Outcome: query.Get("outcome"), OwnerPrincipalID: query.Get("ownerPrincipalId"), JobID: query.Get("jobId"), Confidence: query.Get("confidence")}
+	if len(options.Outcome) > 64 || (options.OwnerPrincipalID != "" && !domain.IsID(options.OwnerPrincipalID)) || (options.JobID != "" && !domain.IsID(options.JobID)) {
+		return domain.JobListOptions{}, errors.New("job query identity or outcome is invalid")
+	}
+	if options.Confidence != "" && !slices.Contains([]string{"current", "stale", "uncertain", "lost", "attention"}, options.Confidence) {
+		return domain.JobListOptions{}, errors.New("confidence is invalid")
+	}
+	for name, destination := range map[string]**time.Time{"completedFrom": &options.CompletedFrom, "completedBefore": &options.CompletedBefore, "createdBefore": &options.CreatedBefore} {
+		if value, present := query[name]; present {
+			parsed, err := time.Parse(time.RFC3339Nano, value[0])
+			if err != nil {
+				return domain.JobListOptions{}, fmt.Errorf("%s must be an RFC3339 timestamp", name)
+			}
+			parsed = parsed.UTC()
+			*destination = &parsed
+		}
+	}
+	if options.CompletedFrom != nil && options.CompletedBefore != nil && !options.CompletedFrom.Before(*options.CompletedBefore) {
+		return domain.JobListOptions{}, errors.New("completion window is invalid")
+	}
 	if value := query.Get("limit"); value != "" {
 		limit, err := strconv.Atoi(value)
 		if err != nil || limit < 1 || limit > domain.MaximumJobListLimit {
@@ -582,7 +604,7 @@ func readJobListOptions(request *http.Request) (domain.JobListOptions, error) {
 		}
 		options.Limit = limit
 	}
-	if options.Phase != "" && !domain.ValidJobPhase(options.Phase) {
+	if options.Phase != "" && !domain.ValidJobPhaseFilter(options.Phase) {
 		return domain.JobListOptions{}, errors.New("phase is invalid")
 	}
 	if token := query.Get("pageToken"); token != "" {
@@ -1021,13 +1043,15 @@ type jobListResponse struct {
 }
 
 type jobMetadata struct {
-	ID        string            `json:"id"`
-	Namespace string            `json:"namespace"`
-	Name      string            `json:"name"`
-	Labels    map[string]string `json:"labels,omitempty"`
-	Revision  int64             `json:"revision"`
-	CreatedAt time.Time         `json:"createdAt"`
-	UpdatedAt time.Time         `json:"updatedAt"`
+	NamespaceID string            `json:"namespaceId,omitempty"`
+	Owner       *domain.JobOwner  `json:"owner,omitempty"`
+	ID          string            `json:"id"`
+	Namespace   string            `json:"namespace"`
+	Name        string            `json:"name"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Revision    int64             `json:"revision"`
+	CreatedAt   time.Time         `json:"createdAt"`
+	UpdatedAt   time.Time         `json:"updatedAt"`
 }
 
 type jobSpec struct {
@@ -1044,13 +1068,17 @@ type jobPlacement struct {
 }
 
 type jobStatus struct {
-	Phase                 string              `json:"phase"`
-	DesiredState          string              `json:"desiredState"`
-	Outcome               string              `json:"outcome,omitempty"`
-	ObservationConfidence string              `json:"observationConfidence,omitempty"`
-	ConfidenceUpdatedAt   *time.Time          `json:"confidenceUpdatedAt,omitempty"`
-	NativeID              string              `json:"nativeId,omitempty"`
-	Scheduler             *jobSchedulerStatus `json:"scheduler,omitempty"`
+	Imported              bool                     `json:"imported"`
+	Lifecycle             domain.JobLifecycle      `json:"lifecycle"`
+	CurrentRun            *domain.RunReference     `json:"currentRun,omitempty"`
+	Group                 domain.JobGroupReference `json:"group"`
+	Phase                 string                   `json:"phase"`
+	DesiredState          string                   `json:"desiredState"`
+	Outcome               string                   `json:"outcome,omitempty"`
+	ObservationConfidence string                   `json:"observationConfidence,omitempty"`
+	ConfidenceUpdatedAt   *time.Time               `json:"confidenceUpdatedAt,omitempty"`
+	NativeID              string                   `json:"nativeId,omitempty"`
+	Scheduler             *jobSchedulerStatus      `json:"scheduler,omitempty"`
 }
 
 type jobSchedulerStatus struct {
@@ -1171,6 +1199,7 @@ func newJobResponse(job domain.Job) jobResponse {
 		APIVersion: apiVersion,
 		Kind:       "Job",
 		Metadata: jobMetadata{
+			NamespaceID: job.NamespaceID, Owner: job.Owner,
 			ID:        job.ID,
 			Namespace: job.Namespace,
 			Name:      job.Name,
@@ -1188,6 +1217,7 @@ func newJobResponse(job domain.Job) jobResponse {
 			},
 		},
 		Status: jobStatus{
+			Imported: job.Imported, Lifecycle: job.Lifecycle, CurrentRun: job.CurrentRun, Group: job.Group,
 			Phase: job.Phase, DesiredState: job.DesiredState,
 			Outcome: job.Outcome, ObservationConfidence: job.ObservationConfidence,
 			NativeID: job.NativeID,

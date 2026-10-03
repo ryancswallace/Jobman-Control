@@ -421,18 +421,8 @@ func getJobWithQuerier(
 ) (domain.Job, error) {
 	// Collection loading already authorized the namespace or occurs inside an
 	// authorized transaction; retain the common scanner shape used by GetJob.
-	return scanJob(querier.QueryRow(ctx, `
-		SELECT
-			j.id::text, $1::text, j.name, j.labels::text, j.phase,
-			j.desired_state, COALESCE(j.outcome, ''), j.placement_target,
-			COALESCE(j.placement_partition, ''), j.workload_digest,
-			j.request_digest, j.revision, j.created_at, j.updated_at,
-			COALESCE(j.target_id::text, ''), COALESCE(j.target_generation_id::text, ''),
-			COALESCE(tg.execution_backend, ''), '', '', '', '', '', NULL::timestamptz,
-			'', NULL::timestamptz
-		FROM jobs AS j
-		LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
-		WHERE j.id = $2
+	return scanJob(querier.QueryRow(ctx, jobSelect+`
+        WHERE n.name = $1 AND j.id = $2
 	`, namespace, jobID))
 }
 

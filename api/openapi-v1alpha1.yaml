@@ -48,6 +48,45 @@ paths:
             text/plain:
               schema: {type: string}
         "503": {$ref: "#/components/responses/ServerError"}
+  /v1/capabilities:
+    get:
+      operationId: getControlCapabilities
+      security: []
+      description: Non-sensitive instance identity, recovery epoch, service time, implemented features, and limits.
+      responses:
+        "200":
+          description: Current source capabilities.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ControlCapabilities"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/summary:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    get:
+      operationId: getNamespaceSummary
+      description: >-
+        Complete authorized counts at one database snapshot. Phase, active, awaiting,
+        and attention counts cover all retained jobs. Outcome counts cover the
+        half-open completion window; omitted map keys mean zero. Defaults to the
+        preceding 24 hours when both timestamps are absent. Supply both or neither.
+      parameters:
+        - name: completedFrom
+          in: query
+          schema: {type: string, format: date-time}
+        - name: completedBefore
+          in: query
+          schema: {type: string, format: date-time}
+      responses:
+        "200":
+          description: Authorized complete summary.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NamespaceSummary"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /v1/me:
     get:
       operationId: getCurrentPrincipal
@@ -371,10 +410,34 @@ paths:
           schema: {type: integer, minimum: 1, maximum: 200, default: 50}
         - name: phase
           in: query
-          schema: {enum: [accepted, assigning, accepted_execution, running, terminal]}
+          schema: {enum: [accepted, assigning, accepted_execution, running, terminal, active, awaiting]}
         - name: pageToken
           in: query
           schema: {type: string, minLength: 1, maxLength: 1024}
+        - name: outcome
+          in: query
+          schema: {type: string, maxLength: 64}
+        - name: ownerPrincipalId
+          in: query
+          description: Verified original submitter, excluding unknown owners of imported history.
+          schema: {type: string, format: uuid}
+        - name: jobId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: confidence
+          in: query
+          description: Attention selects nonterminal stale, uncertain, or lost evidence.
+          schema: {enum: [current, stale, uncertain, lost, attention]}
+        - name: completedFrom
+          in: query
+          schema: {type: string, format: date-time}
+        - name: completedBefore
+          in: query
+          schema: {type: string, format: date-time}
+        - name: createdBefore
+          in: query
+          description: Inclusive stable creation cutoff, separate from the keyset cursor.
+          schema: {type: string, format: date-time}
       responses:
         "200":
           description: Authorized page of shared jobs.
@@ -972,6 +1035,69 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
   schemas:
+    DecimalCount: {type: string, pattern: "^[0-9]+$"}
+    ControlCapabilities:
+      type: object
+      required: [apiVersion, kind, capabilities]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: ControlCapabilities}
+        capabilities:
+          type: object
+          required: [instanceId, recoveryEpoch, serviceTime, contractVersions, features, maximumPageSize]
+          properties:
+            instanceId: {type: string, format: uuid}
+            recoveryEpoch: {$ref: "#/components/schemas/DecimalCount"}
+            serviceTime: {type: string, format: date-time}
+            contractVersions: {type: array, items: {type: string}}
+            features: {type: array, items: {type: string}}
+            maximumPageSize: {type: integer, const: 200}
+    NamespaceSummary:
+      type: object
+      required: [apiVersion, kind, summary]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: NamespaceSummary}
+        summary:
+          type: object
+          required: [namespaceId, namespace, asOf, completedFrom, completedBefore, total, active, awaitingExecution, evidenceAttention, missingCompletionTime, byPhase, byOutcome]
+          properties:
+            namespaceId: {type: string, format: uuid}
+            namespace: {$ref: "#/components/schemas/Name"}
+            asOf: {type: string, format: date-time}
+            completedFrom: {type: string, format: date-time}
+            completedBefore: {type: string, format: date-time}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            active: {$ref: "#/components/schemas/DecimalCount"}
+            awaitingExecution: {$ref: "#/components/schemas/DecimalCount"}
+            evidenceAttention: {$ref: "#/components/schemas/DecimalCount"}
+            missingCompletionTime: {$ref: "#/components/schemas/DecimalCount"}
+            byPhase: {type: object, additionalProperties: {$ref: "#/components/schemas/DecimalCount"}}
+            byOutcome: {type: object, additionalProperties: {$ref: "#/components/schemas/DecimalCount"}}
+    JobLifecycle:
+      type: object
+      properties:
+        startedAt: {type: string, format: date-time}
+        startedRecordedAt: {type: string, format: date-time}
+        startedProvenance: {type: string}
+        completedAt: {type: string, format: date-time}
+        completedRecordedAt: {type: string, format: date-time}
+        completedProvenance: {type: string}
+    RunReference:
+      type: object
+      required: [id, number]
+      properties:
+        id: {type: string, format: uuid}
+        number: {$ref: "#/components/schemas/DecimalCount"}
+        executionId: {type: string, format: uuid}
+    JobGroupReference:
+      type: object
+      properties:
+        collectionId: {type: string, format: uuid}
+        collectionIndex: {type: integer, minimum: 0}
+        graphId: {type: string, format: uuid}
+        graphIndex: {type: integer, minimum: 0}
+        graphDisposition: {type: string}
     CurrentPrincipal:
       type: object
       required: [apiVersion, kind, principal, authorizationCheckedAt, namespaces]
@@ -1505,6 +1631,15 @@ components:
           properties:
             id: {type: string, format: uuid}
             namespace: {$ref: "#/components/schemas/Name"}
+            namespaceId: {type: string, format: uuid}
+            owner:
+              type: object
+              required: [id, issuer, subject, displayName]
+              properties:
+                id: {type: string, format: uuid}
+                issuer: {type: string}
+                subject: {type: string}
+                displayName: {type: string}
             name: {$ref: "#/components/schemas/Name"}
             labels: {type: object, additionalProperties: {type: string}}
             revision: {type: integer, minimum: 1}
@@ -1528,6 +1663,10 @@ components:
           type: object
           required: [phase, desiredState]
           properties:
+            imported: {type: boolean}
+            lifecycle: {$ref: "#/components/schemas/JobLifecycle"}
+            currentRun: {$ref: "#/components/schemas/RunReference"}
+            group: {$ref: "#/components/schemas/JobGroupReference"}
             phase: {enum: [accepted, assigning, accepted_execution, running, terminal]}
             desiredState: {enum: [run, cancel]}
             outcome: {enum: [success, failure, cancelled, timed_out, aborted, lost]}

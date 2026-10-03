@@ -1027,6 +1027,13 @@ func testExecutionLifecycle(
 	if err != nil || job.Phase != "terminal" || job.Outcome != "success" {
 		t.Fatalf("GetJob(completed) = %#v, %v", job, err)
 	}
+	if job.Lifecycle.StartedAt == nil || job.Lifecycle.CompletedAt == nil ||
+		!job.Lifecycle.StartedAt.Equal(started.ObservedAt.Truncate(time.Microsecond)) ||
+		!job.Lifecycle.CompletedAt.Equal(completed.ObservedAt.Truncate(time.Microsecond)) ||
+		job.Lifecycle.StartedProvenance != "process.started" || job.Lifecycle.CompletedProvenance != "process.completed" ||
+		job.CurrentRun == nil || job.CurrentRun.ExecutionID != assignment.ExecutionID {
+		t.Fatalf("observed lifecycle provenance = %#v, run = %#v", job.Lifecycle, job.CurrentRun)
+	}
 }
 
 func testAcceptedCancellation(

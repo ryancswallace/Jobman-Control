@@ -117,6 +117,12 @@ type ExecutionFeatures struct {
 
 // Job is the current durable shared job snapshot.
 type Job struct {
+	NamespaceID           string
+	Owner                 *JobOwner
+	Imported              bool
+	Lifecycle             JobLifecycle
+	CurrentRun            *RunReference
+	Group                 JobGroupReference
 	ID                    string
 	Namespace             string
 	Name                  string
@@ -285,9 +291,16 @@ type HistoryImportResult struct {
 
 // JobListOptions selects one stable, newest-first page of namespace jobs.
 type JobListOptions struct {
-	Limit  int
-	Phase  string
-	Before *JobCursor
+	JobID            string
+	Confidence       string
+	Outcome          string
+	OwnerPrincipalID string
+	CompletedFrom    *time.Time
+	CompletedBefore  *time.Time
+	CreatedBefore    *time.Time
+	Limit            int
+	Phase            string
+	Before           *JobCursor
 }
 
 // JobCursor identifies the exclusive upper boundary of the next page.
@@ -321,4 +334,9 @@ type JobRepository interface {
 	ImportCompletedHistory(context.Context, Principal, string, bool, CompletedHistoryImport) (HistoryImportResult, error)
 	ListJobs(context.Context, Principal, string, JobListOptions) (JobPage, error)
 	GetJob(context.Context, Principal, string, string) (Job, error)
+}
+
+// ValidJobPhaseFilter accepts lifecycle phases and documented monitoring presets.
+func ValidJobPhaseFilter(phase string) bool {
+	return ValidJobPhase(phase) || phase == "active" || phase == "awaiting"
 }

@@ -31,6 +31,7 @@ submit work, enforce policy, and track results.
 | Capability | Jobman Control provides... |
 | --- | --- |
 | Shared state | PostgreSQL-backed jobs, runs, assignments, target generations, policy, and audit history |
+| Monitoring | Instance discovery, complete namespace summaries, filtered job pages, original owners, runs, and lifecycle provenance |
 | Placement | Named hosts, on-premises Slurm partitions, and AWS ParallelCluster target records |
 | Admission | Portable workload validation against target, runtime, platform, resource, log, and artifact capabilities |
 | Coordination | Idempotent submission, namespace quotas, fair dispatch, cancellation, collections, Slurm arrays, and dependency graphs |

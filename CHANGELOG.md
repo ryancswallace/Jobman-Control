@@ -7,6 +7,12 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Stable Control instance discovery with recovery epoch and service time;
+  complete authorized namespace summaries; richer job owner, run, group, and
+  lifecycle metadata; bounded phase, outcome, owner, confidence, and time filters.
+- Lifecycle timestamps from retained/current source observations or explicit
+  Control terminal decisions, with recording-time and provenance distinctions.
+
 - Current-principal discovery with immutable namespace IDs, contributing roles,
   exact capability unions, authorization revisions, and bounded pagination.
 - Independently revocable manual membership grants and an additive migration of
