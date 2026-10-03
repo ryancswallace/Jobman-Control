@@ -75,7 +75,7 @@ func TestCurrentPrincipalContract(t *testing.T) {
 
 func TestCurrentPrincipalRejectsInvalidQueries(t *testing.T) {
 	t.Parallel()
-	for _, query := range []string{"limit=0", "limit=201", "limit=", "limit=no", "limit=1&limit=2", "pageToken=bad", "pageToken=", "scope=all"} {
+	for _, query := range []string{"limit=0", "limit=201", "limit=", "limit=no", "limit=1&limit=2", "pageToken=bad", "pageToken=", "scope=all", "limit=%zz", "pageToken=%zz", "%zz=value", "limit=1;pageToken=anything"} {
 		t.Run(query, func(t *testing.T) {
 			t.Parallel()
 			repository := &authorizationRepository{}
