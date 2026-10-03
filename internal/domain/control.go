@@ -402,6 +402,14 @@ type RecoveryState struct {
 // ControlRepository is the complete persistence boundary used by this slice.
 type ControlRepository interface {
 	JobRepository
+	ListCollections(context.Context, Principal, string, GroupListOptions) (ResourcePage[Collection], error)
+	CollectionSummary(context.Context, Principal, string, string) (CollectionSnapshot, error)
+	ListCollectionItems(context.Context, Principal, string, string, int, int) (ResourcePage[CollectionItem], error)
+	ListGraphs(context.Context, Principal, string, GroupListOptions) (ResourcePage[Graph], error)
+	GraphSummary(context.Context, Principal, string, string) (GraphSnapshot, error)
+	ListGraphNodes(context.Context, Principal, string, string, int, int) (ResourcePage[GraphNodeSnapshot], error)
+	ListGraphEdges(context.Context, Principal, string, string, GraphEdgeOptions) (GraphEdgePage, error)
+	GraphNeighborhood(context.Context, Principal, string, string, string, int, int) (GraphNeighborhood, error)
 	Capabilities(context.Context) (ControlCapabilities, error)
 	NamespaceSummary(context.Context, Principal, string, *time.Time, *time.Time) (NamespaceSummary, error)
 	CurrentPrincipal(context.Context, Principal, string, int) (PrincipalAccess, error)

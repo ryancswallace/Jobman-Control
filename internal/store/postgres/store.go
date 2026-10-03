@@ -60,7 +60,15 @@ func inTransaction[T any](
 	pool *pgxpool.Pool,
 	operation func(pgx.Tx) (T, error),
 ) (result T, resultErr error) {
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	return inTransactionWithOptions(ctx, pool, pgx.TxOptions{}, operation)
+}
+
+func inReadTransaction[T any](ctx context.Context, pool *pgxpool.Pool, operation func(pgx.Tx) (T, error)) (T, error) {
+	return inTransactionWithOptions(ctx, pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, operation)
+}
+
+func inTransactionWithOptions[T any](ctx context.Context, pool *pgxpool.Pool, options pgx.TxOptions, operation func(pgx.Tx) (T, error)) (result T, resultErr error) {
+	tx, err := pool.BeginTx(ctx, options)
 	if err != nil {
 		return result, fmt.Errorf("begin transaction: %w", err)
 	}

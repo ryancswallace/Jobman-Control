@@ -164,9 +164,10 @@ type SubmitResult struct {
 
 // CollectionItem identifies one ordered child job.
 type CollectionItem struct {
-	Index int
-	Name  string
-	Job   Job
+	ArrayTaskIndex *int
+	Index          int
+	Name           string
+	Job            Job
 }
 
 // Collection is the current aggregate snapshot. Child Jobs remain the source

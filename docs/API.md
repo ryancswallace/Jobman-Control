@@ -202,3 +202,9 @@ material.
 Consumers should pin an API version, preserve unknown response fields, use
 ETags and idempotency keys as documented, bound retries, and treat all user and
 agent output as untrusted data.
+
+## Bounded group monitoring
+
+Collection and graph catalogs, summary-only reads, child pages, dependency pages,
+and bounded neighborhoods are documented in [Group monitoring](GROUP_MONITORING.md).
+These additive routes keep legacy complete group documents compatible.

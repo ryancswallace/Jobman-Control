@@ -7,6 +7,10 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Bounded collection/graph catalogs, summary and child pages, Slurm array task
+  indices, source dependency counts, and one-hop graph neighborhoods with exact
+  omission counts; legacy complete group documents remain available.
+
 - Stable Control instance discovery with recovery epoch and service time;
   complete authorized namespace summaries; richer job owner, run, group, and
   lifecycle metadata; bounded phase, outcome, owner, confidence, and time filters.

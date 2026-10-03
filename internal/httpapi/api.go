@@ -95,6 +95,14 @@ func New(options Options) (http.Handler, error) {
 	mux.Handle("PUT /v1/namespaces/{namespace}/membership-grants/{grantID}", serverAPI.client(serverAPI.putMembershipGrant))
 	mux.Handle("DELETE /v1/namespaces/{namespace}/membership-grants/{grantID}", serverAPI.client(serverAPI.revokeMembershipGrant))
 	mux.Handle("POST /v1/namespaces/{namespace}/jobs", serverAPI.client(serverAPI.submitJob))
+	mux.Handle("GET /v1/namespaces/{namespace}/collections", serverAPI.client(serverAPI.listCollections))
+	mux.Handle("GET /v1/namespaces/{namespace}/collections/{collectionID}/summary", serverAPI.client(serverAPI.collectionSummary))
+	mux.Handle("GET /v1/namespaces/{namespace}/collections/{collectionID}/items", serverAPI.client(serverAPI.collectionItems))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs", serverAPI.client(serverAPI.listGraphs))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs/{graphID}/summary", serverAPI.client(serverAPI.graphSummary))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs/{graphID}/nodes", serverAPI.client(serverAPI.graphNodes))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs/{graphID}/dependencies", serverAPI.client(serverAPI.graphDependencies))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs/{graphID}/neighborhood", serverAPI.client(serverAPI.graphNeighborhood))
 	mux.Handle("POST /v1/namespaces/{namespace}/collections", serverAPI.client(serverAPI.submitCollection))
 	mux.Handle("GET /v1/namespaces/{namespace}/collections/{collectionID}", serverAPI.client(serverAPI.getCollection))
 	mux.Handle("POST /v1/namespaces/{namespace}/graphs", serverAPI.client(serverAPI.submitGraph))
@@ -1127,9 +1135,10 @@ type collectionStatus struct {
 }
 
 type collectionItem struct {
-	Index int         `json:"index"`
-	Name  string      `json:"name"`
-	Job   jobResponse `json:"job"`
+	ArrayTaskIndex *int        `json:"arrayTaskIndex,omitempty"`
+	Index          int         `json:"index"`
+	Name           string      `json:"name"`
+	Job            jobResponse `json:"job"`
 }
 
 type graphResponse struct {
