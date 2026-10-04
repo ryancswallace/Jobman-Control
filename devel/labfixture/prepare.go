@@ -6,11 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,6 +22,13 @@ import (
 )
 
 func prepare(ctx context.Context, root, inputPath, databasePath, logRoot string) error {
+	return prepareProfile(ctx, root, inputPath, databasePath, logRoot, "", primaryProfile())
+}
+
+func prepareProfile(ctx context.Context, root, inputPath, databasePath, logRoot, directoryRoot string, profile fixtureProfile) error {
+	if profile.validate() != nil || profile.secondary() && (runtime.GOOS == "windows" || !separateFixtureDirectories(root, directoryRoot) || !separateFixtureDirectories(root, logRoot) || !separateFixtureDirectories(directoryRoot, logRoot)) {
+		return errors.New("invalid fixed profile or separate directory export")
+	}
 	var input fixtureInput
 	if err := readJSON(inputPath, &input); err != nil {
 		return err
@@ -29,7 +36,16 @@ func prepare(ctx context.Context, root, inputPath, databasePath, logRoot string)
 	if err := validateInput(input); err != nil {
 		return err
 	}
+	if profile.secondary() {
+		if err := verifySecondaryDatabaseFile(databasePath, profile); err != nil {
+			return err
+		}
+	}
 	if _, err := os.Stat(filepath.Join(root, "fixture-info.json")); err == nil {
+		var completed fixtureInfo
+		if readJSON(filepath.Join(root, "fixture-info.json"), &completed) != nil || !profile.matchesInfo(completed) {
+			return errors.New("completed fixture profile differs")
+		}
 		// Completed preparations are immutable. Repeated invocation never rotates
 		// trust material, resets revocations, changes grants or seeds duplicate work.
 		var original fixtureInput
@@ -38,6 +54,9 @@ func prepare(ctx context.Context, root, inputPath, databasePath, logRoot string)
 		}
 		if original.Issuer != input.Issuer || original.Audience != input.Audience || original.Host != input.Host || !slices.Equal(original.Users, input.Users) {
 			return errors.New("completed fixture input differs")
+		}
+		if profile.secondary() {
+			return verifyCompletedSecondary(root, directoryRoot, profile)
 		}
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -57,17 +76,22 @@ func prepare(ctx context.Context, root, inputPath, databasePath, logRoot string)
 		return err
 	}
 	defer pool.Close()
-	var databaseName string
-	if operationErr := pool.QueryRow(ctx, "SELECT current_database()").Scan(&databaseName); operationErr != nil {
+	var databaseName, schemaName string
+	if operationErr := pool.QueryRow(ctx, "SELECT current_database(),current_schema()").Scan(&databaseName, &schemaName); operationErr != nil {
 		return operationErr
 	}
-	if databaseName != fixtureDatabase {
+	if !profile.matchesDatabase(databaseName) || profile.secondary() && schemaName != "public" {
 		return errors.New("fixture refuses any other database")
+	}
+	if profile.secondary() {
+		if operationErr := secondaryPreparePreflight(ctx, pool, root, directoryRoot, logRoot); operationErr != nil {
+			return operationErr
+		}
 	}
 	if operationErr := postgres.Migrate(ctx, pool); operationErr != nil {
 		return operationErr
 	}
-	keys, err := generateMaterial(root, input.Host)
+	keys, err := generateMaterialProfile(root, input.Host, profile)
 	if err != nil {
 		return err
 	}
@@ -76,45 +100,29 @@ func prepare(ctx context.Context, root, inputPath, databasePath, logRoot string)
 	if err != nil {
 		return err
 	}
+	info.Profile = profile.name
 	info.Synthetic = true
 	info.Version = buildinfo.Version
 	info.Issuer = input.Issuer
-	info.Endpoint = "https://" + net.JoinHostPort(input.Host, "18443")
-	info.DelegationAudience = fixtureAudience
+	info.Endpoint = "https://" + net.JoinHostPort(input.Host, profile.apiPort)
+	info.DelegationAudience = profile.audience
 	capabilities, err := store.Capabilities(ctx)
 	if err != nil {
 		return err
 	}
 	info.InstanceID = capabilities.InstanceID
-	config := directory.Config{URL: "ldaps://127.0.0.1:18636", BaseDN: fixtureBaseDN, BindDN: fixtureBindDN, PasswordFile: filepath.Join(root, "directory-password"), CAFile: filepath.Join(root, "fixture-ca.crt"), Mapping: domain.DirectoryMapping{SourceID: fixtureSource, Revision: 1, Identities: info.Identities}}
-	state := fixtureState{Revision: 1}
-	for _, user := range input.Users {
-		state.Users = append(state.Users, stateUser{DirectoryID: user.DirectoryID, Enabled: true})
-	}
-	roles := []string{domain.RoleViewer, domain.RoleSubmitter, domain.RoleOperator, domain.RoleNamespaceAdmin}
-	for index, namespace := range info.Namespaces {
-		config.Mapping.Namespaces = append(config.Mapping.Namespaces, namespace.ID)
-		config.Mapping.ApprovedTransitions = append(config.Mapping.ApprovedTransitions, namespace.ID)
-		for roleIndex, role := range roles {
-			id := fmt.Sprintf("72000000-0000-4000-8000-%012d", index*4+roleIndex+1)
-			config.Mapping.Bindings = append(config.Mapping.Bindings, domain.DirectoryBinding{GroupID: id, NamespaceID: namespace.ID, Role: role})
-			members := []string{}
-			if index == 0 && roleIndex < 2 || index == 1 && roleIndex == 3 {
-				members = append(members, input.Users[0].DirectoryID)
-			}
-			if index == 0 && roleIndex == 0 {
-				members = append(members, input.Users[1].DirectoryID)
-			}
-			state.Groups = append(state.Groups, stateGroup{ID: id, Members: members})
-		}
-	}
+	config, state := directoryProfile(root, profile, input, info)
 	if operationErr := directory.Validate(config); operationErr != nil {
 		return operationErr
 	}
 	registry := struct {
 		Services []domain.DelegationKey `json:"services"`
-	}{Services: []domain.DelegationKey{{ServiceID: "dashboard-lab", KeyID: "synthetic-lab-v1", Audience: fixtureAudience, PublicKey: keys.public, CertificateThumbprints: []string{keys.thumbprint}, NamespaceIDs: config.Mapping.Namespaces, Operations: []string{domain.CapabilityNamespaceRead, domain.CapabilityJobsRead, domain.CapabilityGroupsRead, domain.CapabilityTargetsRead, domain.CapabilityLogsRead, domain.CapabilityArtifactsRead, domain.CapabilityEvidenceRead}, Enabled: true}}}
-	registry.Services = append(registry.Services, domain.DelegationKey{ServiceID: "dashboard-log-broker-lab", KeyID: "synthetic-broker-v1", Audience: fixtureAudience, PublicKey: keys.brokerPublic, CertificateThumbprints: []string{keys.brokerThumbprint}, NamespaceIDs: config.Mapping.Namespaces, Operations: []string{domain.CapabilityNamespaceRead, domain.CapabilityLogsRead}, Enabled: true})
+	}{Services: []domain.DelegationKey{{ServiceID: profile.apiService, KeyID: profile.apiKey, Audience: profile.audience, PublicKey: keys.public, CertificateThumbprints: []string{keys.thumbprint}, NamespaceIDs: config.Mapping.Namespaces, Operations: []string{domain.CapabilityNamespaceRead, domain.CapabilityJobsRead, domain.CapabilityGroupsRead, domain.CapabilityTargetsRead, domain.CapabilityLogsRead, domain.CapabilityArtifactsRead, domain.CapabilityEvidenceRead}, Enabled: true}}}
+	registry.Services = append(registry.Services, domain.DelegationKey{ServiceID: profile.brokerService, KeyID: profile.brokerKey, Audience: profile.audience, PublicKey: keys.brokerPublic, CertificateThumbprints: []string{keys.brokerThumbprint}, NamespaceIDs: config.Mapping.Namespaces, Operations: []string{domain.CapabilityNamespaceRead, domain.CapabilityLogsRead}, Enabled: true})
+	if profile.secondary() {
+		registry.Services[0].Operations = append(registry.Services[0].Operations, "events.read")
+		registry.Services = append(registry.Services, domain.DelegationKey{ServiceID: profile.workerService, KeyID: profile.workerKey, Audience: profile.audience, PublicKey: keys.workerPublic, CertificateThumbprints: []string{keys.workerThumbprint}, NamespaceIDs: config.Mapping.Namespaces, Operations: []string{domain.CapabilityNamespaceRead, domain.CapabilityJobsRead, domain.CapabilityLogsRead, domain.CapabilityEvidenceRead, "events.read"}, Enabled: true})
+	}
 	if operationErr := writeJSON(filepath.Join(root, "directory.json"), config); operationErr != nil {
 		return operationErr
 	}
@@ -126,10 +134,16 @@ func prepare(ctx context.Context, root, inputPath, databasePath, logRoot string)
 	}
 	environment := map[string]string{
 		"JOBMAN_CONTROL_DATABASE_URL": databaseURL, "JOBMAN_CONTROL_AUTH_MODE": "oidc", "JOBMAN_CONTROL_OIDC_ISSUER": input.Issuer, "JOBMAN_CONTROL_OIDC_AUDIENCE": input.Audience,
-		"JOBMAN_CONTROL_LISTEN": "0.0.0.0:18443", "JOBMAN_CONTROL_TLS_CERT_FILE": filepath.Join(root, "control-server.crt"), "JOBMAN_CONTROL_TLS_KEY_FILE": filepath.Join(root, "control-server.key"),
+		"JOBMAN_CONTROL_LISTEN": "0.0.0.0:" + profile.apiPort, "JOBMAN_CONTROL_TLS_CERT_FILE": filepath.Join(root, "control-server.crt"), "JOBMAN_CONTROL_TLS_KEY_FILE": filepath.Join(root, "control-server.key"),
 		"JOBMAN_CONTROL_AGENT_CA_CERT_FILE": filepath.Join(root, "fixture-ca.crt"), "JOBMAN_CONTROL_AGENT_CA_KEY_FILE": filepath.Join(root, "fixture-ca.key"), "JOBMAN_CONTROL_AGENT_TOKEN_KEY": base64.RawURLEncoding.EncodeToString(keys.tokenKey),
 		"JOBMAN_CONTROL_DELEGATION_REGISTRY_FILE": filepath.Join(root, "delegation.json"), "JOBMAN_CONTROL_DELEGATION_CLIENT_CA_FILE": filepath.Join(root, "fixture-ca.crt"),
 		"JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE": filepath.Join(root, "directory.json"), "JOBMAN_CONTROL_DIRECTORY_MODE": "enforce", "JOBMAN_CONTROL_MIGRATE_ON_START": "false",
+	}
+	if profile.secondary() {
+		environment["JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID"] = profile.deployment
+		if operationErr := exportSecondaryDirectory(root, directoryRoot, profile, state); operationErr != nil {
+			return operationErr
+		}
 	}
 	names := make([]string, 0, len(environment))
 	for name := range environment {
@@ -146,7 +160,13 @@ func prepare(ctx context.Context, root, inputPath, databasePath, logRoot string)
 	if operationErr := writeJSON(filepath.Join(root, "fixture-input.json"), input); operationErr != nil {
 		return operationErr
 	}
-	return writeJSON(filepath.Join(root, "fixture-info.json"), info)
+	if operationErr := writeJSON(filepath.Join(root, "fixture-info.json"), info); operationErr != nil {
+		return operationErr
+	}
+	if profile.secondary() {
+		return finishSecondaryPreparation(root)
+	}
+	return nil
 }
 
 func validateInput(input fixtureInput) error {

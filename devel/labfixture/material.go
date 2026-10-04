@@ -17,6 +17,8 @@ import (
 )
 
 type fixtureKeys struct {
+	workerPublic     ed25519.PublicKey
+	workerThumbprint string
 	public           ed25519.PublicKey
 	thumbprint       string
 	brokerPublic     ed25519.PublicKey
@@ -25,7 +27,14 @@ type fixtureKeys struct {
 }
 
 func generateMaterial(root, host string) (fixtureKeys, error) {
+	return generateMaterialProfile(root, host, primaryProfile())
+}
+
+func generateMaterialProfile(root, host string, profile fixtureProfile) (fixtureKeys, error) {
 	var result fixtureKeys
+	if profile.validate() != nil {
+		return result, errors.New("invalid material profile")
+	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return result, err
 	}
@@ -46,19 +55,23 @@ func generateMaterial(root, host string) (fixtureKeys, error) {
 	if operationErr := writeKeyPair(root, "fixture-ca", caDER, caPrivate); operationErr != nil {
 		return result, operationErr
 	}
-	for index, name := range []string{"control-server", "dashboard-client", "broker-client"} {
+	names := []string{"control-server", "dashboard-client", "broker-client"}
+	if profile.secondary() {
+		names = append(names, "worker-client", "directory-server")
+	}
+	for index, name := range names {
 		public, private, keyErr := ed25519.GenerateKey(rand.Reader)
 		if keyErr != nil {
 			return result, keyErr
 		}
 		certificate := &x509.Certificate{SerialNumber: big.NewInt(int64(index + 2)), Subject: pkix.Name{CommonName: "SYNTHETIC " + name}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(7 * 24 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature}
-		if index == 0 {
+		if index == 0 || name == "directory-server" {
 			certificate.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 			certificate.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")}
 			certificate.DNSNames = []string{"localhost"}
-			if ip := net.ParseIP(host); ip != nil {
+			if ip := net.ParseIP(host); ip != nil && name != "directory-server" {
 				certificate.IPAddresses = append(certificate.IPAddresses, ip)
-			} else {
+			} else if name != "directory-server" {
 				certificate.DNSNames = append(certificate.DNSNames, host)
 			}
 		} else {
@@ -71,23 +84,33 @@ func generateMaterial(root, host string) (fixtureKeys, error) {
 		if operationErr := writeKeyPair(root, name, der, private); operationErr != nil {
 			return result, operationErr
 		}
-		if index > 0 {
+		if index > 0 && name != "directory-server" {
 			hash := sha256.Sum256(der)
-			if index == 1 {
+			switch index {
+			case 1:
 				result.thumbprint = base64.RawURLEncoding.EncodeToString(hash[:])
-			} else {
+			case 3:
+				result.workerThumbprint = base64.RawURLEncoding.EncodeToString(hash[:])
+			default:
 				result.brokerThumbprint = base64.RawURLEncoding.EncodeToString(hash[:])
 			}
 		}
 	}
-	for _, name := range []string{"dashboard", "broker"} {
+	signers := []string{"dashboard", "broker"}
+	if profile.secondary() {
+		signers = append(signers, "worker")
+	}
+	for _, name := range signers {
 		public, private, keyErr := ed25519.GenerateKey(rand.Reader)
 		if keyErr != nil {
 			return result, keyErr
 		}
-		if name == "dashboard" {
+		switch name {
+		case "dashboard":
 			result.public = public
-		} else {
+		case "worker":
+			result.workerPublic = public
+		default:
 			result.brokerPublic = public
 		}
 		encoded, encodeErr := x509.MarshalPKCS8PrivateKey(private)

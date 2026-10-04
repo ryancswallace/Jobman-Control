@@ -41,6 +41,7 @@ type fixtureInput struct {
 	Users    []fixtureUser `json:"users"`
 }
 type fixtureInfo struct {
+	Profile            string                     `json:"profile,omitempty"`
 	Synthetic          bool                       `json:"synthetic"`
 	Version            string                     `json:"controlVersion"`
 	InstanceID         string                     `json:"instanceId"`
@@ -83,22 +84,31 @@ func main() {
 
 func run() error {
 	flags := flag.NewFlagSet("labfixture", flag.ContinueOnError)
+	profileName := flags.String("profile", "", "fixed primary or secondary-v1 synthetic fixture")
+	directoryRoot := flags.String("directory-root", "", "separate private secondary LDAPS material directory")
 	root := flags.String("root", "", "absolute private fixture directory")
 	input := flags.String("config", "", "public approved synthetic identities JSON")
-	database := flags.String("database-url-file", "", "private TLS DSN file for jobman_dashboard_control only")
+	database := flags.String("database-url-file", "", "private TLS DSN file for the selected fixed fixture database")
 	logRoot := flags.String("log-root", "", "absolute synthetic log object root")
 	deployment := flags.String("deployment-id", "", "exact synthetic Dashboard diagnostic deployment UUID")
 	receipt := flags.String("receipt", "", "32 lowercase hexadecimal notification scenario identity")
 	action := flags.String("action", "", "notification scenario prepare or complete")
 	scenarioCase := flags.String("case", "", "notification scenario first or stopped")
 	if len(os.Args) < 2 {
-		return errors.New("choose prepare, diagnostic or directory")
+		return errors.New("choose prepare, diagnostic, notifications or directory")
 	}
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		return err
 	}
 	if !filepath.IsAbs(*root) || *root == "/" {
 		return errors.New("private absolute fixture root required")
+	}
+	profile, err := selectProfile(*profileName)
+	if err != nil {
+		return err
+	}
+	if (!profile.secondary() || os.Args[1] != "prepare") && *directoryRoot != "" {
+		return errors.New("primary fixture has no separate directory export")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -109,17 +119,26 @@ func run() error {
 		}
 		prepareContext, stop := context.WithTimeout(ctx, 2*time.Minute)
 		defer stop()
-		return prepare(prepareContext, *root, *input, *database, *logRoot)
+		if !profile.secondary() {
+			return prepare(prepareContext, *root, *input, *database, *logRoot)
+		}
+		return prepareProfile(prepareContext, *root, *input, *database, *logRoot, *directoryRoot, profile)
 	case "directory":
-		return serveDirectory(ctx, *root)
+		if !profile.secondary() {
+			return serveDirectory(ctx, *root)
+		}
+		return serveDirectoryProfile(ctx, *root, profile)
 	case "diagnostic":
+		if profile.secondary() {
+			return errors.New("secondary profile has no diagnostic mutation mode")
+		}
 		diagnosticContext, stop := context.WithTimeout(ctx, 90*time.Second)
 		defer stop()
 		return prepareDiagnostic(diagnosticContext, *root, *database, *logRoot, *deployment)
 	case "notifications":
 		scenarioContext, stop := context.WithTimeout(ctx, 30*time.Second)
 		defer stop()
-		value, err := notificationScenario(scenarioContext, *root, *database, *deployment, *receipt, *action, *scenarioCase)
+		value, err := notificationScenarioProfile(scenarioContext, *root, *database, *deployment, *receipt, *action, *scenarioCase, profile)
 		if err != nil {
 			return err
 		}

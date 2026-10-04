@@ -22,19 +22,37 @@ import (
 )
 
 func serveDirectory(ctx context.Context, root string) error {
-	certificate, err := tls.LoadX509KeyPair(filepath.Join(root, "control-server.crt"), filepath.Join(root, "control-server.key"))
+	return serveDirectoryProfile(ctx, root, primaryProfile())
+}
+
+func serveDirectoryProfile(ctx context.Context, root string, profile fixtureProfile) error {
+	if err := verifyDirectoryProfile(root, profile); err != nil {
+		return err
+	}
+	certName := "control-server"
+	if profile.secondary() {
+		certName = "directory-server"
+	}
+	certificate, err := tls.LoadX509KeyPair(filepath.Join(root, certName+".crt"), filepath.Join(root, certName+".key"))
 	if err != nil {
 		return err
 	}
-	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", "127.0.0.1:18636")
+	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", "127.0.0.1:"+profile.ldapPort)
 	if err != nil {
 		return err
 	}
 	defer listener.Close()
-	return serveDirectoryOn(ctx, tls.NewListener(listener, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}), root)
+	return serveDirectoryOnProfile(ctx, tls.NewListener(listener, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}), root, profile)
 }
 
 func serveDirectoryOn(ctx context.Context, listener net.Listener, root string) error {
+	return serveDirectoryOnProfile(ctx, listener, root, primaryProfile())
+}
+
+func serveDirectoryOnProfile(ctx context.Context, listener net.Listener, root string, profile fixtureProfile) error {
+	if err := verifyDirectoryProfile(root, profile); err != nil {
+		return err
+	}
 	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
 	defer stop()
 	for {
@@ -47,7 +65,7 @@ func serveDirectoryOn(ctx context.Context, listener net.Listener, root string) e
 		}
 		// Only one local Control instance uses this synthetic fixture. A short
 		// connection deadline bounds an unresponsive client without unbounded workers.
-		if connectionErr := serveDirectoryConnection(ctx, connection, root); connectionErr != nil {
+		if connectionErr := serveDirectoryConnectionProfile(ctx, connection, root, profile); connectionErr != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -56,7 +74,7 @@ func serveDirectoryOn(ctx context.Context, listener net.Listener, root string) e
 	}
 }
 
-func serveDirectoryConnection(ctx context.Context, connection net.Conn, root string) error {
+func serveDirectoryConnectionProfile(ctx context.Context, connection net.Conn, root string, profile fixtureProfile) error {
 	defer connection.Close()
 	if err := connection.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		return err
@@ -92,7 +110,7 @@ func serveDirectoryConnection(ctx context.Context, connection net.Conn, root str
 		}
 		switch uint64(operation.Tag) {
 		case 0:
-			if bound || len(operation.Children) != 3 || operation.Children[1].Value != fixtureBindDN || subtle.ConstantTimeCompare(operation.Children[2].Data.Bytes(), password) != 1 {
+			if bound || len(operation.Children) != 3 || operation.Children[1].Value != profile.bindDN || subtle.ConstantTimeCompare(operation.Children[2].Data.Bytes(), password) != 1 {
 				if writeErr := writeLDAPResult(connection, id, 1, 49); writeErr != nil {
 					return writeErr
 				}
@@ -105,11 +123,11 @@ func serveDirectoryConnection(ctx context.Context, connection net.Conn, root str
 		case 2:
 			return nil
 		case 3:
-			if !bound || len(operation.Children) != 8 || operation.Children[0].Value != fixtureBaseDN {
+			if !bound || len(operation.Children) != 8 || operation.Children[0].Value != profile.baseDN {
 				return errors.New("fixture LDAP query denied")
 			}
 			guid := filterGUID(operation.Children[6])
-			dn, attributes := directoryEntry(state, guid)
+			dn, attributes := directoryEntryProfile(state, guid, profile)
 			if dn != "" {
 				response := ber.NewSequence("")
 				response.AppendChild(id)
@@ -185,7 +203,7 @@ func filterGUID(packet *ber.Packet) []byte {
 	return nil
 }
 
-func directoryEntry(state fixtureState, guid []byte) (distinguishedName string, values map[string][][]byte) {
+func directoryEntryProfile(state fixtureState, guid []byte, profile fixtureProfile) (distinguishedName string, values map[string][][]byte) {
 	attributes := func(id string) map[string][][]byte {
 		return map[string][][]byte{"objectGUID": {windowsGUID(id)}, "uSNChanged": {[]byte(strconv.FormatInt(state.Revision, 10))}}
 	}
@@ -200,21 +218,25 @@ func directoryEntry(state fixtureState, guid []byte) (distinguishedName string, 
 		}
 		a["userAccountControl"] = [][]byte{[]byte(flag)}
 		a["accountExpires"] = [][]byte{[]byte("0")}
-		return userDN(user.DirectoryID), a
+		return userDNProfile(user.DirectoryID, profile), a
 	}
 	for _, group := range state.Groups {
 		if bytes.Equal(windowsGUID(group.ID), guid) {
 			a := attributes(group.ID)
 			a["member"] = [][]byte{}
 			for _, member := range group.Members {
-				a["member"] = append(a["member"], []byte(userDN(member)))
+				a["member"] = append(a["member"], []byte(userDNProfile(member, profile)))
 			}
-			return "CN=" + group.ID + ",OU=Groups," + fixtureBaseDN, a
+			return "CN=" + group.ID + ",OU=Groups," + profile.baseDN, a
 		}
 	}
 	return "", nil
 }
-func userDN(id string) string { return "CN=" + id + ",OU=People," + fixtureBaseDN }
+
+func userDNProfile(id string, profile fixtureProfile) string {
+	return "CN=" + id + ",OU=People," + profile.baseDN
+}
+
 func windowsGUID(id string) []byte {
 	value, err := hex.DecodeString(strings.ReplaceAll(id, "-", ""))
 	if err != nil || len(value) != 16 {

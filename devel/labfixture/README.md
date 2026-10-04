@@ -230,3 +230,94 @@ read-only exact-event queries, then the Dashboard API test checks rules, inbox,
 read state and immediate stops. No helper performs Dashboard SQL mutations.
 These scenarios establish cancellation-event integration only; they do not
 establish real workload execution, AD FS, APNs or managed-phone acceptance.
+
+
+## Add a separate secondary source
+
+The explicit immutable `--profile secondary-v1` selector prepares a second
+isolated source. Omitting it, or selecting `primary`, retains the original
+primary database, listeners, material names, memberships and public JSON shape.
+Profiles do not accept arbitrary database names, ports, source identities or
+operation sets. The secondary profile refuses diagnostic mutation mode.
+
+Before using this mode, provision a fresh dedicated database and role named
+`jobman_dashboard_control_secondary`, with a private `verify-full` DSN and the
+same reviewed migration set as the exact normal Control binary. Preparation
+checks both the URL and `current_database()`, requires `current_schema()` to be
+`public`, and refuses any pre-existing table. It never alters the original
+Control or first Dashboard fixture database. Namespace names intentionally match
+the first source, while all namespace, principal, job and Control-instance UUIDs
+are newly generated. No primary database, trust key or recovery state is copied.
+
+Provision three distinct empty real directories, each mode `0700`, with no
+symlink aliases or nested paths. Run preparation as the provisioning operator;
+the helper never changes ownership or converts existing directories:
+
+```sh
+jobman-control-lab-helper prepare --profile secondary-v1 \
+  --root /etc/jobman-dashboard-secondary/control \
+  --directory-root /etc/jobman-dashboard-secondary/directory \
+  --config /etc/jobman-dashboard-secondary/fixture-input.json \
+  --database-url-file /etc/jobman-dashboard-secondary/control-database-url \
+  --log-root /var/lib/jobman-dashboard-secondary/seed-logs
+```
+
+Use the same two approved Keycloak subjects and immutable directory GUIDs in
+Alice/Bob order. The secondary direct groups use the fixed `73000000` UUID
+prefix. Alice receives research viewer only; Bob receives research viewer plus
+submitter and operations namespace administrator. Eight one-group-to-one-role
+mappings use the separate source `synthetic-dashboard-lab-secondary` and base
+`DC=dashboard-secondary,DC=lab,DC=test`. Existing primary grants are unaffected.
+The helper still produces synthetic observation data, not actual execution.
+
+The separate Control listener is `28443`; synthetic LDAP binds only loopback
+`28636`. The delegation audience is `urn:jobman:dashboard-lab-secondary:control`.
+Independent API, worker and broker registrations each pin a newly generated
+Ed25519 key and mTLS leaf. API (`dashboard-api-lab-secondary`, `secondary-api-v1`)
+has namespace/jobs/groups/targets/logs/artifacts/evidence reads plus events.
+Worker (`dashboard-worker-lab-secondary`, `secondary-worker-v1`) has
+namespace/jobs/logs/evidence/events reads. Broker
+(`dashboard-log-broker-lab-secondary`, `secondary-broker-v1`) has only namespace
+and log reads. Public resource names do not select a trust identity.
+
+The secondary Control root adds `worker-client.crt`/`.key`,
+`worker-signing-key.pem`, `worker-signing-public.pem`, and a separate loopback-only
+`directory-server.crt`/`.key`. The LDAP export contains **only** that LDAP pair,
+`directory-password`, `directory-state.json`, and `directory-profile.json`.
+It receives no source database URL, agent token key, CA private key or delegation
+signing material. The provisioning operator assigns the Control root to UID21907
+and the independent LDAP root to UID21908, retaining `0700`/`0600`. The separate
+LDAP process requires no access to the Control root:
+
+```sh
+jobman-control-lab-helper directory --profile secondary-v1 \
+  --root /etc/jobman-dashboard-secondary/directory
+```
+
+Start the exact normal Control binary with the separate `control.env`. Its
+configuration already pins diagnostic deployment
+`72000000-0000-4000-8000-000000000002`, directory enforcement and disabled
+migrate-on-start. The operator grants only the required public CA and private
+leaf/signing files to each Dashboard process. Copy the new namespace logs as
+Alice to the separate NFS subtree `/data/jobman/alice/dashboard-secondary`, using
+the designated broker-reader ACL and retaining root squashing. Never expose a
+private material root through a log mapping.
+
+A synced exclusive `.secondary-prepare.json` receipt precedes migrations or
+seeding. Any partial preparation requires inspection; retry refuses populated
+roots or a pending receipt. A completed identical rerun verifies the profile
+and exact separate directory export before doing no work. A different profile,
+DSN role/database, export root or original input cannot repurpose the fixture.
+Normal secondary cancellation scenarios select Bob, require this profile and
+exact secondary deployment, and retain the existing per-job receipt and target
+checks. Before invoking a secondary mutation as the source UID, the privileged
+Lab wrapper must also check the independent LDAP root for directory-recovery
+receipts; the source UID is intentionally unable to read that root.
+
+Fixture tests include actual loopback LDAPS into the normal directory reconciler
+against a disposable PostgreSQL schema. They verify both asymmetric role unions,
+Alice's denied operations scope, same-namespace other-owner reads, Bob's ordinary
+cancellation event, unchanged prior jobs and rejection of a same-name job on a
+different target. These tests do not apply or deploy the second source. Live
+Dashboard registry extension, source-qualified aggregation, revocation and
+notification acceptance remain separate reviewed Lab actions.
