@@ -200,3 +200,33 @@ job rows unchanged, round-trip the supplemental metadata, reject altered source
 epochs/bytes and duplicate preparation, and verify private receipt/file bounds.
 Live report acceptance must separately exercise Control, actual NFS broker reads,
 the public collector/deterministic engine, stored pairs, API and sealed citations.
+
+## Notification cancellation scenario
+
+The `notifications` mode supports deployed Dashboard event acceptance without
+adding an agent or target. A reviewed Lab wrapper invokes it as the existing
+synthetic source user with the dedicated private database file, exact deployment,
+private fixture root, `--receipt` (32 lowercase hexadecimal characters), and
+`--action prepare|complete`. Completion also requires `--case first|stopped`.
+Only the fixed `dashboard-research` namespace is used.
+
+Preparation submits two new Alice-owned jobs through ordinary `SubmitJob`; it
+never inserts jobs through SQL, changes directory groups, or reconciles other
+work. A durable private pending receipt precedes writes; incomplete preparation
+requires inspection. Up to 100 completed scenario manifests are retained.
+Completed preparation replays verify the exact source epoch and job names/IDs.
+
+Completion calls ordinary `CancelJob` for the exact recorded job and stable
+idempotency key. The normal terminal trigger and publisher supply the durable
+event. Repeats return the same original terminal-event UUID. A job that unexpectedly
+launched and cannot immediately terminalize fails the scenario; the helper does
+not synthesize a process result. Read-only outbox inspection verifies the exact
+namespace, job, outcome and revision. Public output contains only synthetic
+provenance, source-qualified IDs, timestamps and optional actual run/execution
+IDs. Credentials and source documents remain private.
+
+The wrapper verifies actual publisher/ingestion/evaluation completion through
+read-only exact-event queries, then the Dashboard API test checks rules, inbox,
+read state and immediate stops. No helper performs Dashboard SQL mutations.
+These scenarios establish cancellation-event integration only; they do not
+establish real workload execution, AD FS, APNs or managed-phone acceptance.

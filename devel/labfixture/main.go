@@ -88,6 +88,9 @@ func run() error {
 	database := flags.String("database-url-file", "", "private TLS DSN file for jobman_dashboard_control only")
 	logRoot := flags.String("log-root", "", "absolute synthetic log object root")
 	deployment := flags.String("deployment-id", "", "exact synthetic Dashboard diagnostic deployment UUID")
+	receipt := flags.String("receipt", "", "32 lowercase hexadecimal notification scenario identity")
+	action := flags.String("action", "", "notification scenario prepare or complete")
+	scenarioCase := flags.String("case", "", "notification scenario first or stopped")
 	if len(os.Args) < 2 {
 		return errors.New("choose prepare, diagnostic or directory")
 	}
@@ -113,6 +116,14 @@ func run() error {
 		diagnosticContext, stop := context.WithTimeout(ctx, 90*time.Second)
 		defer stop()
 		return prepareDiagnostic(diagnosticContext, *root, *database, *logRoot, *deployment)
+	case "notifications":
+		scenarioContext, stop := context.WithTimeout(ctx, 30*time.Second)
+		defer stop()
+		value, err := notificationScenario(scenarioContext, *root, *database, *deployment, *receipt, *action, *scenarioCase)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(value)
 	default:
 		return errors.New("unknown fixture mode")
 	}
