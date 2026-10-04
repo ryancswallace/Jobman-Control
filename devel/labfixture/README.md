@@ -139,3 +139,62 @@ both empty terminal variants, group unions, Bob's narrower scope, removal,
 directory outage beyond 120 seconds, reproof, and pinned immutable byte reads.
 Do not call synthetic LDAP/Keycloak behavior evidence of AD FS or managed-phone
 acceptance.
+
+## Add one diagnostic observation fixture
+
+The optional `diagnostic` mode adds one dedicated `synthetic-diagnostics` host
+target, one synthetic agent, and one Alice-owned failed job in the existing
+`dashboard-operations` namespace. This is synthetic Store observation data:
+the helper never launches a subprocess or Slurm workload. It preserves original
+targets, agents, jobs, log objects, trust material, group memberships and
+`fixture-info.json`. The additional catalog entry must be included explicitly in
+Dashboard acceptance expectations and its exact generation in the broker mapping.
+
+Use a separately reviewed exact helper build, with the same migration set as the
+running synthetic Control. First apply the reviewed source upgrade through the
+Lab's dedicated-database/instance-guarded upgrade procedure. This mode checks
+`CheckMigrations` and never runs migrations. It requires the existing private
+environment to pin the diagnostic deployment below, directory enforcement and
+disabled migrate-on-start. The database must still be `jobman_dashboard_control`
+over `verify-full`, with the same instance as the original fixture.
+
+Create a separate empty local spool owned by the synthetic source user with mode
+`0750`, for example `/var/lib/jobman-dashboard-lab/diagnostic-logs`. Run the helper
+as that user, with read access to the existing private DSN file:
+
+```sh
+jobman-control-lab-helper diagnostic \
+  --root /etc/jobman-dashboard-lab/control-fixture \
+  --database-url-file /etc/jobman-dashboard-lab/control-database-url \
+  --log-root /var/lib/jobman-dashboard-lab/diagnostic-logs \
+  --deployment-id 72000000-0000-4000-8000-000000000001
+```
+
+The helper waits at most45 seconds for the ordinary coordinator to offer the
+new job to the dedicated agent; it never runs broad reconciliation itself. It
+accepts that exact job assignment, records synthetic start/completion with exit
+code1, and publishes one complete stderr chunk plus an empty complete stdout
+chunk through normal Store methods. The nonsecret stderr contains a deterministic
+permission diagnostic and the Lab redaction canary. No other execution is accepted.
+
+`diagnostic-fixture.json` is a separately created immutable supplemental manifest.
+It identifies synthetic observation mode, helper commit, deployment/Control
+instance/epoch, namespace, new target/generation, job/revision/run/execution and
+exact immutable chunk metadata. It contains no credential or log bytes. Grant
+Alice read/traverse only on the separate spool and copy just those new chunks as
+Alice into the existing NFS root with its designated-reader ACL; never copy the
+private fixture directory or change root squashing. The Lab wrapper verifies
+chunk hashes before and after copying and adds only the exact new broker mapping.
+
+A completed repeat verifies the original job, source epoch, manifests and bytes,
+then performs no writes. A private exclusive `.diagnostic-prepare.json` receipt
+is synced before mutations. Any partial failure leaves it for operator inspection
+and prevents an automatic retry; never delete it merely to rerun the helper.
+Existing directory-revocation recovery receipts also block preparation. The
+helper does not reset or roll back source data or overwrite an immutable object.
+
+Fixture tests use disposable schemas and a separate test coordinator, prove old
+job rows unchanged, round-trip the supplemental metadata, reject altered source
+epochs/bytes and duplicate preparation, and verify private receipt/file bounds.
+Live report acceptance must separately exercise Control, actual NFS broker reads,
+the public collector/deterministic engine, stored pairs, API and sealed citations.

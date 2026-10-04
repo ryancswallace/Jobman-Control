@@ -87,8 +87,9 @@ func run() error {
 	input := flags.String("config", "", "public approved synthetic identities JSON")
 	database := flags.String("database-url-file", "", "private TLS DSN file for jobman_dashboard_control only")
 	logRoot := flags.String("log-root", "", "absolute synthetic log object root")
+	deployment := flags.String("deployment-id", "", "exact synthetic Dashboard diagnostic deployment UUID")
 	if len(os.Args) < 2 {
-		return errors.New("choose prepare or directory")
+		return errors.New("choose prepare, diagnostic or directory")
 	}
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		return err
@@ -108,6 +109,10 @@ func run() error {
 		return prepare(prepareContext, *root, *input, *database, *logRoot)
 	case "directory":
 		return serveDirectory(ctx, *root)
+	case "diagnostic":
+		diagnosticContext, stop := context.WithTimeout(ctx, 90*time.Second)
+		defer stop()
+		return prepareDiagnostic(diagnosticContext, *root, *database, *logRoot, *deployment)
 	default:
 		return errors.New("unknown fixture mode")
 	}
