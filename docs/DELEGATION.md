@@ -174,3 +174,10 @@ mTLS HTTP exercise covers successful reads, replay, missing certificates,
 unverified aliases, cross-namespace requests, wrong operation, and cancellation
 attempts. Actual corporate AD FS/LDAP and deployed certificate configuration
 remain part of the release integration proof.
+
+### Separate background feed authority
+
+`events.read` is now available only for the distinct service-only assertion shape
+documented in [monitoring events](MONITORING_EVENTS.md): actor omitted, `sub=iss`,
+and `mode=worker`. It permits only the monitoring checkpoint and page routes.
+It confers no human role, identity alias, user detail, or mutation capability.

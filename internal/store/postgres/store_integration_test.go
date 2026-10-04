@@ -250,7 +250,11 @@ func TestStoreIntegration(t *testing.T) {
 
 	assertTableCount(ctx, t, pool, "jobs", 2)
 	assertTableCount(ctx, t, pool, "idempotency_records", 5)
-	assertTableCount(ctx, t, pool, "outbox", 4)
+	assertTableCount(ctx, t, pool, "outbox", 6)
+	var terminalEvents int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM outbox WHERE topic='monitoring.job_terminal.v1' AND payload->>'runId' IS NOT NULL AND payload->>'runNumber'='1'`).Scan(&terminalEvents); err != nil || terminalEvents != 2 {
+		t.Fatalf("actual run terminal events=%d,%v", terminalEvents, err)
+	}
 	assertTableCount(ctx, t, pool, "audit_events", 14)
 	assertTableCount(ctx, t, pool, "assignments", 2)
 	assertTableCount(ctx, t, pool, "log_streams", 4)

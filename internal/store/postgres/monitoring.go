@@ -43,7 +43,7 @@ const jobSelect = `
 
 // Capabilities returns non-sensitive source identity and implemented features.
 func (store *Store) Capabilities(ctx context.Context) (domain.ControlCapabilities, error) {
-	result := domain.ControlCapabilities{ContractVersions: []string{"jobman.control/v1alpha1"}, Features: []string{"namespace-discovery", "role-unions", "job-monitoring", "namespace-summary", "group-catalogs", "bounded-graph-monitoring", "read-delegation", "directory-authorization", "bounded-log-manifests", "bounded-artifact-metadata", "target-catalogs"}, MaximumPageSize: domain.MaximumJobListLimit}
+	result := domain.ControlCapabilities{ContractVersions: []string{"jobman.control/v1alpha1"}, Features: []string{"namespace-discovery", "role-unions", "job-monitoring", "namespace-summary", "group-catalogs", "bounded-graph-monitoring", "read-delegation", "directory-authorization", "bounded-log-manifests", "bounded-artifact-metadata", "target-catalogs", "durable-monitoring-events"}, MaximumPageSize: domain.MaximumJobListLimit}
 	if store.diagnosticDeploymentID != "" {
 		result.Features = append(result.Features, "shared-diagnostic-snapshots")
 	}

@@ -60,6 +60,43 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/ControlCapabilities"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /v1/monitoring-events/checkpoint:
+    get:
+      operationId: getMonitoringCheckpoint
+      security:
+        - serviceEvents: []
+          serviceMutualTLS: []
+      description: >-
+        Service-only source-clock activation boundary and committed feed head for
+        the exact assertion namespace set. OIDC users and actor assertions are
+        rejected. No query parameters are accepted.
+      responses:
+        "200": {description: Authorized service checkpoint., content: {application/json: {schema: {$ref: "#/components/schemas/MonitoringCheckpoint"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/monitoring-events:
+    get:
+      operationId: listMonitoringEvents
+      security:
+        - serviceEvents: []
+          serviceMutualTLS: []
+      description: >-
+        Bounded durable terminal transitions for independently registered service
+        authority. A next cursor can advance through events outside the whitelist
+        without returning their payloads. Requires explicit recovery on retention,
+        source instance/epoch, or exact namespace-scope changes. Never silently resets.
+      parameters:
+        - {name: cursor, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 1024}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        "200": {description: Ordered event page and source checkpoint., content: {application/json: {schema: {$ref: "#/components/schemas/MonitoringEventList"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {description: "event_cursor_expired, source_recovery_changed, or event_cursor_scope_changed; explicitly reconcile and establish a new checkpoint.", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "503": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/summary:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
@@ -1412,6 +1449,14 @@ paths:
         "409": {$ref: "#/components/responses/ClientError"}
 components:
   securitySchemes:
+    serviceEvents:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: >-
+        Jobman-Delegation Ed25519 JWT bound to actual mTLS. Service-only events.read
+        requires sub=iss, mode=worker, actor omitted (null rejected), and an explicit
+        registered namespace UUID subset. It grants no represented-user read.
     delegatedRead:
       type: http
       scheme: Jobman-Delegation
@@ -2092,6 +2137,56 @@ components:
             total: {$ref: "#/components/schemas/DecimalCount"}
             items: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/Partition"}}
             nextPageToken: {type: string}
+    MonitoringCheckpointFields:
+      type: object
+      required: [controlInstanceId, recoveryEpoch, asOf, headCursor, oldestCursor, retentionSeconds, backlogCount]
+      properties:
+        controlInstanceId: {type: string, format: uuid}
+        recoveryEpoch: {type: string, pattern: '^[1-9][0-9]*$'}
+        asOf: {type: string, format: date-time}
+        headCursor: {type: string, minLength: 1, maxLength: 1024}
+        oldestCursor: {type: string, minLength: 1, maxLength: 1024}
+        retentionSeconds: {type: string, pattern: '^[1-9][0-9]*$'}
+        backlogCount: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        oldestUnpublishedRecordedAt: {type: string, format: date-time}
+    MonitoringCheckpoint:
+      allOf:
+        - {$ref: "#/components/schemas/MonitoringCheckpointFields"}
+        - type: object
+          required: [apiVersion, kind]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: MonitoringCheckpoint}
+    MonitoringEventList:
+      allOf:
+        - {$ref: "#/components/schemas/MonitoringCheckpointFields"}
+        - type: object
+          required: [apiVersion, kind, items, nextCursor, hasMore]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: MonitoringEventList}
+            items: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/MonitoringEvent"}}
+            nextCursor: {type: string, minLength: 1, maxLength: 1024}
+            hasMore: {type: boolean}
+    MonitoringEvent:
+      type: object
+      required: [eventId, position, namespaceId, jobId, ownerPrincipalId, oldPhase, newPhase, outcome, jobRevision, recordedAt, imported, reconciliation]
+      properties:
+        eventId: {type: string, format: uuid}
+        position: {type: string, pattern: '^[1-9][0-9]*$'}
+        namespaceId: {type: string, format: uuid}
+        jobId: {type: string, format: uuid}
+        runId: {type: string, format: uuid}
+        runNumber: {type: string, pattern: '^[1-9][0-9]*$'}
+        ownerPrincipalId: {type: string, format: uuid}
+        oldPhase: {enum: [accepted, assigning, accepted_execution, running]}
+        newPhase: {const: terminal}
+        outcome: {type: string}
+        jobRevision: {type: string, pattern: '^[1-9][0-9]*$'}
+        observedCompletedAt: {type: string, format: date-time}
+        recordedAt: {type: string, format: date-time}
+        imported: {type: boolean}
+        reconciliation: {type: boolean}
     DiagnosticSnapshot:
       allOf:
         - {$ref: "#/components/schemas/NamespaceReadAuthority"}

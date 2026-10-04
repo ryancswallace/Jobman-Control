@@ -40,6 +40,7 @@ const (
 // Config contains validated service settings. DatabaseURL is secret-bearing
 // and must never be logged or returned by an endpoint.
 type Config struct {
+	MonitoringFeedRetention  time.Duration
 	DiagnosticDeploymentID   string
 	DirectoryConfigFile      string
 	DirectoryMode            string
@@ -146,11 +147,19 @@ func load(lookup lookupEnvironment) (Config, error) {
 	if retentionErr != nil {
 		return Config{}, retentionErr
 	}
+	monitoringRetention, err := durationValue(lookup, "JOBMAN_CONTROL_MONITORING_FEED_RETENTION", 30*24*time.Hour, 24*time.Hour, 365*24*time.Hour)
+	if err != nil {
+		return Config{}, err
+	}
+	if monitoringRetention%time.Second != 0 {
+		return Config{}, errors.New("monitoring retention must be whole seconds")
+	}
 	configuration := Config{
-		DiagnosticDeploymentID: strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID", "")),
-		DirectoryConfigFile:    strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE", "")),
-		DirectoryMode:          strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_MODE", "preview")),
-		DelegationRegistryFile: registryFile, DelegationClientCAFile: clientCAFile, DelegationAuditRetention: auditRetention,
+		MonitoringFeedRetention: monitoringRetention,
+		DiagnosticDeploymentID:  strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID", "")),
+		DirectoryConfigFile:     strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE", "")),
+		DirectoryMode:           strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_MODE", "preview")),
+		DelegationRegistryFile:  registryFile, DelegationClientCAFile: clientCAFile, DelegationAuditRetention: auditRetention,
 		DatabaseURL:              databaseURL,
 		ListenAddress:            listenAddress,
 		DevelopmentAuth:          developmentAuth,

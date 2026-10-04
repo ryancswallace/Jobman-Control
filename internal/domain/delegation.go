@@ -9,6 +9,7 @@ import (
 // DelegatedActor is set only by the verified service authenticator. It never
 // replaces current repository authorization with a reusable access grant.
 type DelegatedActor struct {
+	ServiceOnly           bool
 	Audience              string
 	ServiceID             string
 	KeyID                 string
@@ -47,4 +48,10 @@ type DelegationRegistry interface {
 // audit, generic proxying, and service-only event-feed capabilities.
 func DelegationReadOperation(operation string) bool {
 	return slices.Contains([]string{CapabilityNamespaceRead, CapabilityJobsRead, CapabilityGroupsRead, CapabilityTargetsRead, CapabilityLogsRead, CapabilityArtifactsRead, CapabilityEvidenceRead}, operation)
+}
+
+// DelegationOperation includes the separate service-only monitoring capability.
+// DelegationReadOperation remains restricted to represented-user reads.
+func DelegationOperation(operation string) bool {
+	return DelegationReadOperation(operation) || operation == CapabilityEventsRead
 }

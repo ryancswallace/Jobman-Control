@@ -234,3 +234,7 @@ stable cursors and source authorization snapshots.
 
 [Shared diagnostic snapshots](docs/DIAGNOSTIC_SNAPSHOTS.md) expose bounded factual
 metadata with verified source identity for the public core evidence collector.
+
+Durable terminal-event ingestion for independently registered Dashboard services is
+available through [monitoring checkpoints and events](docs/MONITORING_EVENTS.md),
+with ordered transactional publication and explicit retention/recovery gaps.

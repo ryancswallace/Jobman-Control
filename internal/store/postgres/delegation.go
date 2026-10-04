@@ -60,7 +60,7 @@ func (store *Store) RegisterDelegationKeys(ctx context.Context, keys []domain.De
 }
 
 func validateDelegationKey(key domain.DelegationKey) error {
-	if key.ServiceID == "" || len(key.ServiceID) > 128 || key.KeyID == "" || len(key.KeyID) > 128 || key.Audience == "" || len(key.Audience) > 512 || len(key.PublicKey) != ed25519.PublicKeySize || len(key.CertificateThumbprints) == 0 || len(key.CertificateThumbprints) > 8 || len(key.NamespaceIDs) == 0 || len(key.NamespaceIDs) > 320 || len(key.Operations) == 0 || len(key.Operations) > 7 {
+	if key.ServiceID == "" || len(key.ServiceID) > 128 || key.KeyID == "" || len(key.KeyID) > 128 || key.Audience == "" || len(key.Audience) > 512 || len(key.PublicKey) != ed25519.PublicKeySize || len(key.CertificateThumbprints) == 0 || len(key.CertificateThumbprints) > 8 || len(key.NamespaceIDs) == 0 || len(key.NamespaceIDs) > 320 || len(key.Operations) == 0 || len(key.Operations) > 8 {
 		return errors.New("delegation service registration is invalid")
 	}
 	for _, thumbprint := range key.CertificateThumbprints {
@@ -75,7 +75,7 @@ func validateDelegationKey(key domain.DelegationKey) error {
 		}
 	}
 	for _, operation := range key.Operations {
-		if !domain.DelegationReadOperation(operation) {
+		if !domain.DelegationOperation(operation) {
 			return errors.New("delegation permits only explicit monitoring reads")
 		}
 	}
@@ -103,6 +103,9 @@ func queryDelegationKey(ctx context.Context, query collectionQuerier, serviceID,
 // unique insert. It does not authorize resource access or bootstrap an alias.
 func (store *Store) AcceptDelegationAssertion(ctx context.Context, principal domain.Principal) error {
 	_, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (struct{}, error) {
+		if principal.Delegation != nil && principal.Delegation.ServiceOnly {
+			return struct{}{}, acceptServiceAssertion(ctx, tx, principal)
+		}
 		identity, resolveErr := resolveDelegatedPrincipal(ctx, tx, principal)
 		if resolveErr != nil {
 			return struct{}{}, resolveErr
@@ -130,7 +133,7 @@ type verifiedDirectoryPrincipal struct {
 func resolveDelegatedPrincipal(ctx context.Context, tx pgx.Tx, principal domain.Principal) (verifiedDirectoryPrincipal, error) {
 	result := verifiedDirectoryPrincipal{}
 	actor := principal.Delegation
-	if actor == nil || !domain.IsID(actor.DirectoryID) || !domain.DelegationReadOperation(actor.Operation) || len(actor.NamespaceIDs) == 0 || len(actor.NamespaceIDs) > 320 {
+	if actor == nil || actor.ServiceOnly || !domain.IsID(actor.DirectoryID) || !domain.DelegationReadOperation(actor.Operation) || len(actor.NamespaceIDs) == 0 || len(actor.NamespaceIDs) > 320 {
 		return result, domain.ErrForbidden
 	}
 	key, err := queryDelegationKey(ctx, tx, actor.ServiceID, actor.KeyID)

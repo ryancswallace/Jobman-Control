@@ -224,3 +224,11 @@ and namespace-authorized immutable UUID details.
 
 See [Shared diagnostic snapshots](DIAGNOSTIC_SNAPSHOTS.md) for source-pinned
 metadata evidence, omissions, current authorization and bounded run selection.
+
+### Background monitoring events
+
+Service-only `events.read` assertions authorize `GET /v1/monitoring-events/checkpoint`
+and bounded `GET /v1/monitoring-events?cursor=...&limit=100`. Ordinary users and
+represented-user assertions cannot use these routes. See
+[monitoring events](MONITORING_EVENTS.md) for source-clock activation, ordered
+publication, minimal event fields, independent retention, and explicit gaps.

@@ -382,13 +382,17 @@ type AuditPage struct {
 
 // OperationalSnapshot contains bounded-cardinality service metrics.
 type OperationalSnapshot struct {
-	JobsByPhase       map[string]int64
-	AgentsByStatus    map[string]int64
-	UnpublishedOutbox int64
-	StaleExecutions   int64
-	OldestQueueAge    time.Duration
-	RecoveryHold      bool
-	RestoreEpoch      int64
+	JobsByPhase                 map[string]int64
+	AgentsByStatus              map[string]int64
+	UnpublishedOutbox           int64
+	MonitoringBacklog           int64
+	OldestMonitoringBacklogAge  time.Duration
+	OldestRetainedMonitoringAge time.Duration
+	MonitoringRetention         time.Duration
+	StaleExecutions             int64
+	OldestQueueAge              time.Duration
+	RecoveryHold                bool
+	RestoreEpoch                int64
 }
 
 // RecoveryState controls conservative assignment after a database restore.

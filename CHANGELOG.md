@@ -7,6 +7,10 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Add service-only durable terminal-event checkpoints and bounded feeds, ordered
+  transactional outbox publication, explicit restore/scope/retention gaps,
+  independent 30-day default retention, and operational backlog metrics.
+
 - Add source-pinned, authorized transactional shared diagnostic snapshots with
   real run/execution identity, bounded lifecycle/dependency facts and opaque log
   references. Public core evidence integration uses an immutable development pin.

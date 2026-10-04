@@ -53,3 +53,10 @@ modules; builds never depend on a sibling checkout or a local `replace` rule.
 It is a temporary development integration pin, not a claim that the upstream
 shared evidence contract has shipped. Production release acceptance requires the
 approved core release and an explicit consumer version update.
+
+Migration 21 adds the durable monitoring feed and explicit service-only assertion
+shape. It does not backfill old terminal jobs. Exact schema compatibility prevents
+old binaries from running after migration; rollback requires the coordinated
+restore procedure, recovery-epoch advance, and explicit consumer reconciliation.
+Original retained event UUIDs survive restores; missing backup history cannot be
+reconstructed. See [monitoring events](MONITORING_EVENTS.md).

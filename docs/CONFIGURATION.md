@@ -60,3 +60,8 @@ the resulting file is stored privately outside version control.
 The optional `JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID` is the immutable Dashboard
 registry source UUID. Configuring it enables `shared-diagnostic-snapshots`; all
 replicas must preserve this identity. See [Shared diagnostic snapshots](DIAGNOSTIC_SNAPSHOTS.md).
+
+`JOBMAN_CONTROL_MONITORING_FEED_RETENTION` defaults to `720h`, independently of
+namespace outbox and Dashboard inbox retention. Valid values are whole-second
+durations from `24h` through `8760h`; configure the same value on all replicas.
+See [monitoring events](MONITORING_EVENTS.md) before reducing the retained window.

@@ -47,6 +47,7 @@ func exerciseDelegationHTTP(ctx context.Context, t *testing.T, store *Store, exi
 	fingerprint := base64.RawURLEncoding.EncodeToString(hash[:])
 	registration := existing
 	registration.KeyID = "http-test-key"
+	registration.Operations = append(append([]string(nil), existing.Operations...), domain.CapabilityEventsRead)
 	registration.PublicKey = public
 	registration.CertificateThumbprints = []string{fingerprint}
 	if err = store.RegisterDelegationKeys(ctx, []domain.DelegationKey{existing, registration}); err != nil {
@@ -64,7 +65,7 @@ func exerciseDelegationHTTP(ctx context.Context, t *testing.T, store *Store, exi
 		}
 		claims := struct {
 			jwt.Claims
-			Actor        map[string]string `json:"actor"`
+			Actor        map[string]string `json:"actor,omitempty"`
 			Confirmation map[string]string `json:"cnf"`
 			Operation    string            `json:"operation"`
 			NamespaceIDs []string          `json:"namespaceIds"`
@@ -72,6 +73,11 @@ func exerciseDelegationHTTP(ctx context.Context, t *testing.T, store *Store, exi
 		}{
 			Claims: jwt.Claims{Issuer: registration.ServiceID, Subject: principal.Delegation.DirectoryID, Audience: jwt.Audience{registration.Audience}, IssuedAt: jwt.NewNumericDate(now), NotBefore: jwt.NewNumericDate(now), Expiry: jwt.NewNumericDate(now.Add(time.Minute)), ID: base64.RawURLEncoding.EncodeToString(random[:])},
 			Actor:  map[string]string{"directoryId": principal.Delegation.DirectoryID, "issuer": principal.Issuer, "subject": subject}, Confirmation: map[string]string{"x5t#S256": fingerprint}, Operation: operation, NamespaceIDs: registration.NamespaceIDs, Mode: "interactive",
+		}
+		if operation == domain.CapabilityEventsRead {
+			claims.Subject = registration.ServiceID
+			claims.Actor = nil
+			claims.Mode = "worker"
 		}
 		compact, signErr := jwt.Signed(signer).Claims(claims).Serialize()
 		if signErr != nil {
@@ -112,6 +118,9 @@ func exerciseDelegationHTTP(ctx context.Context, t *testing.T, store *Store, exi
 			t.Fatal(requestErr)
 		}
 		defer response.Body.Close()
+		if response.Header.Get("Cache-Control") != "no-store" {
+			t.Fatal("authenticated response is cacheable")
+		}
 		if response.StatusCode != want {
 			t.Fatalf("delegated HTTP %s %s=%d, want %d", method, path, response.StatusCode, want)
 		}
@@ -137,5 +146,22 @@ func exerciseDelegationHTTP(ctx context.Context, t *testing.T, store *Store, exi
 	identity, ok := body["principal"].(map[string]any)
 	if !ok || identity["directoryId"] != principal.Delegation.DirectoryID {
 		t.Fatalf("verified HTTP directory identity=%v", body)
+	}
+	feedPath := "/v1/monitoring-events/checkpoint"
+	serviceAuthorization := mint(domain.CapabilityEventsRead, "")
+	checkpoint := request(client, http.MethodGet, feedPath, serviceAuthorization, http.StatusOK)
+	request(client, http.MethodGet, feedPath, serviceAuthorization, http.StatusUnauthorized)
+	request(noCertificate, http.MethodGet, feedPath, mint(domain.CapabilityEventsRead, ""), http.StatusUnauthorized)
+	request(client, http.MethodGet, path, mint(domain.CapabilityEventsRead, ""), http.StatusUnauthorized)
+	request(client, http.MethodGet, "/v1/me", mint(domain.CapabilityEventsRead, ""), http.StatusUnauthorized)
+	request(client, http.MethodPost, path+"/cancel", mint(domain.CapabilityEventsRead, ""), http.StatusUnauthorized)
+	request(client, http.MethodGet, feedPath, mint(domain.CapabilityNamespaceRead, principal.Subject), http.StatusUnauthorized)
+	cursor, valid := checkpoint["headCursor"].(string)
+	if !valid || cursor == "" {
+		t.Fatal("feed checkpoint missing cursor")
+	}
+	page := request(client, http.MethodGet, "/v1/monitoring-events?cursor="+cursor+"&limit=1", mint(domain.CapabilityEventsRead, ""), http.StatusOK)
+	if page["kind"] != "MonitoringEventList" {
+		t.Fatal("wrong feed contract")
 	}
 }

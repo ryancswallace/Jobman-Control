@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -32,11 +33,11 @@ type (
 	}
 	delegationClaims struct {
 		jwt.Claims
-		Confirmation map[string]string  `json:"cnf"`
-		Actor        delegationIdentity `json:"actor"`
-		Operation    string             `json:"operation"`
-		NamespaceIDs []string           `json:"namespaceIds"`
-		Mode         string             `json:"mode"`
+		Confirmation map[string]string   `json:"cnf"`
+		Actor        *delegationIdentity `json:"actor,omitempty"`
+		Operation    string              `json:"operation"`
+		NamespaceIDs []string            `json:"namespaceIds"`
+		Mode         string              `json:"mode"`
 	}
 )
 
@@ -52,7 +53,7 @@ type DelegationAuthenticator struct {
 // performed by every repository read using current grants and directory state.
 func (authenticator DelegationAuthenticator) Authenticate(ctx context.Context, authorization string, connection *tls.ConnectionState, operation string) (domain.Principal, error) {
 	scheme, compact, found := strings.Cut(authorization, " ")
-	if !found || !strings.EqualFold(scheme, DelegationScheme) || compact == "" || len(compact) > maximumDelegationBytes || strings.ContainsAny(compact, " \t\r\n") || strings.Count(compact, ".") != 2 || !domain.DelegationReadOperation(operation) || authenticator.Registry == nil {
+	if !found || !strings.EqualFold(scheme, DelegationScheme) || compact == "" || len(compact) > maximumDelegationBytes || strings.ContainsAny(compact, " \t\r\n") || strings.Count(compact, ".") != 2 || !domain.DelegationOperation(operation) || authenticator.Registry == nil {
 		return domain.Principal{}, domain.ErrUnauthenticated
 	}
 	if connection == nil || !connection.HandshakeComplete || len(connection.PeerCertificates) == 0 || len(connection.VerifiedChains) == 0 {
@@ -83,7 +84,11 @@ func (authenticator DelegationAuthenticator) Authenticate(ctx context.Context, a
 		return domain.Principal{}, domain.ErrUnauthenticated
 	}
 	var claims delegationClaims
-	if err = token.Claims(ed25519.PublicKey(key.PublicKey), &claims); err != nil {
+	var claimShape map[string]json.RawMessage
+	if err = token.Claims(ed25519.PublicKey(key.PublicKey), &claims, &claimShape); err != nil {
+		return domain.Principal{}, domain.ErrUnauthenticated
+	}
+	if _, present := claimShape["actor"]; operation == domain.CapabilityEventsRead && present {
 		return domain.Principal{}, domain.ErrUnauthenticated
 	}
 	now := time.Now().UTC()
@@ -100,11 +105,15 @@ func (authenticator DelegationAuthenticator) Authenticate(ctx context.Context, a
 		return domain.Principal{}, domain.ErrUnauthenticated
 	}
 	digest := sha256.Sum256([]byte(compact))
-	principal := domain.Principal{Issuer: claims.Actor.Issuer, Subject: claims.Actor.Subject, Delegation: &domain.DelegatedActor{
-		Audience: key.Audience, ServiceID: claims.Issuer, KeyID: header.KeyID, CertificateThumbprint: thumbprint, DirectoryID: claims.Actor.DirectoryID,
+	principal := domain.Principal{Delegation: &domain.DelegatedActor{
+		Audience: key.Audience, ServiceID: claims.Issuer, KeyID: header.KeyID, CertificateThumbprint: thumbprint, ServiceOnly: claims.Actor == nil,
 		Operation: claims.Operation, NamespaceIDs: slices.Clone(claims.NamespaceIDs), Mode: claims.Mode, AssertionID: claims.ID,
 		AssertionDigest: base64.RawURLEncoding.EncodeToString(digest[:]), IssuedAt: claims.IssuedAt.Time(), ExpiresAt: claims.Expiry.Time(),
 	}}
+	if claims.Actor != nil {
+		principal.Issuer, principal.Subject = claims.Actor.Issuer, claims.Actor.Subject
+		principal.Delegation.DirectoryID = claims.Actor.DirectoryID
+	}
 	if acceptErr := authenticator.Registry.AcceptDelegationAssertion(ctx, principal); acceptErr != nil {
 		if errors.Is(acceptErr, domain.ErrForbidden) || errors.Is(acceptErr, domain.ErrUnauthenticated) || errors.Is(acceptErr, domain.ErrAuthorizationUnavailable) {
 			return domain.Principal{}, acceptErr
@@ -115,7 +124,14 @@ func (authenticator DelegationAuthenticator) Authenticate(ctx context.Context, a
 }
 
 func validDelegationClaims(claims delegationClaims, key domain.DelegationKey, now time.Time, operation string, certificateExpires time.Time) bool {
-	if claims.IssuedAt == nil || claims.NotBefore == nil || claims.Expiry == nil || claims.Subject != claims.Actor.DirectoryID || !domain.IsID(claims.Actor.DirectoryID) || claims.Actor.Issuer == "" || len(claims.Actor.Issuer) > 512 || claims.Actor.Subject == "" || len(claims.Actor.Subject) > 512 {
+	if claims.IssuedAt == nil || claims.NotBefore == nil || claims.Expiry == nil {
+		return false
+	}
+	if operation == domain.CapabilityEventsRead {
+		if claims.Actor != nil || claims.Subject != claims.Issuer || claims.Mode != "worker" {
+			return false
+		}
+	} else if claims.Actor == nil || claims.Subject != claims.Actor.DirectoryID || !domain.IsID(claims.Actor.DirectoryID) || claims.Actor.Issuer == "" || len(claims.Actor.Issuer) > 512 || claims.Actor.Subject == "" || len(claims.Actor.Subject) > 512 {
 		return false
 	}
 	if len(claims.Audience) != 1 || claims.Audience[0] != key.Audience || claims.Operation != operation || !slices.Contains(key.Operations, operation) || !slices.Contains([]string{"interactive", "worker"}, claims.Mode) {

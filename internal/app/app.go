@@ -72,6 +72,13 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		}
 		directoryConfig = &loaded
 	}
+	retention := configuration.MonitoringFeedRetention
+	if retention == 0 {
+		retention = 30 * 24 * time.Hour
+	}
+	if retentionErr := store.ConfigureMonitoringRetention(startupContext, retention); retentionErr != nil {
+		return retentionErr
+	}
 	var certificateAuthority *agentca.Authority
 	if configuration.AgentCACertificateFile != "" {
 		certificateAuthority, err = agentca.Load(
@@ -163,6 +170,7 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 	go runCoordinator(
 		ctx, logger, store, configuration.CoordinatorInterval, configuration.AgentStaleAfter, configuration.DelegationAuditRetention,
 	)
+	go runMonitoringPublisher(ctx, logger, store, time.Second)
 	if directoryConfig != nil {
 		go runDirectory(ctx, logger, store, *directoryConfig)
 	}

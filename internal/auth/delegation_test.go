@@ -81,7 +81,7 @@ func newDelegationFixture(t *testing.T) delegationFixture {
 	sum := sha256.Sum256(der)
 	thumbprint := base64.RawURLEncoding.EncodeToString(sum[:])
 	key := domain.DelegationKey{ServiceID: "dashboard", KeyID: "key-1", Audience: "control-instance", PublicKey: public, CertificateThumbprints: []string{thumbprint}, NamespaceIDs: []string{delegationNamespace}, Operations: []string{domain.CapabilityJobsRead}, Enabled: true}
-	claims := delegationClaims{Claims: jwt.Claims{Issuer: key.ServiceID, Subject: delegationDirectory, Audience: jwt.Audience{key.Audience}, IssuedAt: jwt.NewNumericDate(now), NotBefore: jwt.NewNumericDate(now), Expiry: jwt.NewNumericDate(now.Add(time.Minute)), ID: base64.RawURLEncoding.EncodeToString(make([]byte, 24))}, Confirmation: map[string]string{"x5t#S256": thumbprint}, Actor: delegationIdentity{DirectoryID: delegationDirectory, Issuer: "https://adfs.example.test/adfs", Subject: "stable-subject"}, Operation: domain.CapabilityJobsRead, NamespaceIDs: []string{delegationNamespace}, Mode: "interactive"}
+	claims := delegationClaims{Claims: jwt.Claims{Issuer: key.ServiceID, Subject: delegationDirectory, Audience: jwt.Audience{key.Audience}, IssuedAt: jwt.NewNumericDate(now), NotBefore: jwt.NewNumericDate(now), Expiry: jwt.NewNumericDate(now.Add(time.Minute)), ID: base64.RawURLEncoding.EncodeToString(make([]byte, 24))}, Confirmation: map[string]string{"x5t#S256": thumbprint}, Actor: &delegationIdentity{DirectoryID: delegationDirectory, Issuer: "https://adfs.example.test/adfs", Subject: "stable-subject"}, Operation: domain.CapabilityJobsRead, NamespaceIDs: []string{delegationNamespace}, Mode: "interactive"}
 	return delegationFixture{now: now, private: private, registry: &testDelegationRegistry{key: key, seen: map[string]bool{}}, connection: &tls.ConnectionState{HandshakeComplete: true, PeerCertificates: []*x509.Certificate{certificate}, VerifiedChains: [][]*x509.Certificate{{certificate}}}, claims: claims}
 }
 
@@ -209,5 +209,66 @@ func TestDelegationAllowsExplicitFiveSecondSkew(t *testing.T) {
 	fixture.now = fixture.now.Add(64 * time.Second)
 	if _, err := fixture.authenticate(t, fixture.token(t, nil), domain.CapabilityJobsRead); err != nil {
 		t.Fatalf("bounded expiry skew=%v", err)
+	}
+}
+
+func TestMonitoringServiceAssertionHasSeparateIdentityShape(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		mutate    func(*delegationFixture)
+		operation string
+		ok        bool
+	}{
+		{name: "service", operation: domain.CapabilityEventsRead, ok: true},
+		{name: "actor", operation: domain.CapabilityEventsRead, mutate: func(f *delegationFixture) {
+			f.claims.Actor = &delegationIdentity{DirectoryID: delegationDirectory, Issuer: "issuer", Subject: "subject"}
+		}},
+		{name: "interactive", operation: domain.CapabilityEventsRead, mutate: func(f *delegationFixture) { f.claims.Mode = "interactive" }},
+		{name: "subject", operation: domain.CapabilityEventsRead, mutate: func(f *delegationFixture) { f.claims.Subject = delegationDirectory }},
+		{name: "wrong route", operation: domain.CapabilityJobsRead},
+		{name: "no registration", operation: domain.CapabilityEventsRead, mutate: func(f *delegationFixture) { f.registry.key.Operations = []string{domain.CapabilityJobsRead} }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			f := newDelegationFixture(t)
+			f.registry.key.Operations = []string{domain.CapabilityEventsRead}
+			f.claims.Actor = nil
+			f.claims.Subject = f.claims.Issuer
+			f.claims.Operation = domain.CapabilityEventsRead
+			f.claims.Mode = "worker"
+			if test.mutate != nil {
+				test.mutate(&f)
+			}
+			principal, err := f.authenticate(t, f.token(t, nil), test.operation)
+			if test.ok {
+				if err != nil || principal.Delegation == nil || !principal.Delegation.ServiceOnly || principal.Issuer != "" || principal.Subject != "" || principal.Delegation.DirectoryID != "" {
+					t.Fatalf("service principal=%#v,%v", principal, err)
+				}
+			} else if err == nil {
+				t.Fatal("invalid service assertion accepted")
+			}
+		})
+	}
+}
+
+func TestMonitoringServiceRejectsExplicitNullActor(t *testing.T) {
+	t.Parallel()
+	f := newDelegationFixture(t)
+	f.registry.key.Operations = []string{domain.CapabilityEventsRead}
+	f.claims.Actor = nil
+	f.claims.Subject = f.claims.Issuer
+	f.claims.Mode = "worker"
+	f.claims.Operation = domain.CapabilityEventsRead
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.EdDSA, Key: f.private}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", f.registry.key.KeyID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact, err := jwt.Signed(signer).Claims(f.claims).Claims(map[string]any{"actor": nil}).Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.authenticate(t, DelegationScheme+" "+compact, domain.CapabilityEventsRead); err == nil {
+		t.Fatal("explicit null actor accepted as service-only")
 	}
 }

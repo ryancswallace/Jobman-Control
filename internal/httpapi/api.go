@@ -96,6 +96,8 @@ func New(options Options) (http.Handler, error) {
 	mux.HandleFunc("GET /metrics", serverAPI.metrics)
 	mux.HandleFunc("GET /v1/capabilities", serverAPI.capabilities)
 	mux.Handle("GET /v1/namespaces/{namespace}/summary", serverAPI.client(serverAPI.namespaceSummary))
+	mux.Handle("GET /v1/monitoring-events", serverAPI.client(serverAPI.monitoringEvents))
+	mux.Handle("GET /v1/monitoring-events/checkpoint", serverAPI.client(serverAPI.monitoringCheckpoint))
 	mux.Handle("GET /v1/me", serverAPI.client(serverAPI.currentPrincipal))
 	mux.Handle("PUT /v1/namespaces/{namespace}/membership-grants/{grantID}", serverAPI.client(serverAPI.putMembershipGrant))
 	mux.Handle("DELETE /v1/namespaces/{namespace}/membership-grants/{grantID}", serverAPI.client(serverAPI.revokeMembershipGrant))
@@ -189,6 +191,10 @@ func (service *api) metrics(writer http.ResponseWriter, request *http.Request) {
 		_, _ = fmt.Fprintf(writer, "jobman_control_agents{status=%q} %d\n", status, snapshot.AgentsByStatus[status])
 	}
 	_, _ = fmt.Fprintf(writer, "jobman_control_outbox_unpublished %d\n", snapshot.UnpublishedOutbox)
+	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_backlog %d\n", snapshot.MonitoringBacklog)
+	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_backlog_oldest_seconds %g\n", snapshot.OldestMonitoringBacklogAge.Seconds())
+	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_retained_oldest_seconds %g\n", snapshot.OldestRetainedMonitoringAge.Seconds())
+	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_retention_seconds %g\n", snapshot.MonitoringRetention.Seconds())
 	_, _ = fmt.Fprintf(writer, "jobman_control_executions_stale %d\n", snapshot.StaleExecutions)
 	_, _ = fmt.Fprintf(writer, "jobman_control_oldest_queue_age_seconds %.3f\n", snapshot.OldestQueueAge.Seconds())
 	if snapshot.RecoveryHold {

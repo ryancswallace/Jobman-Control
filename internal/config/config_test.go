@@ -252,3 +252,16 @@ func TestDiagnosticDeploymentIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestMonitoringRetentionConfiguration(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"23h", "8761h", "720h1ns", "invalid"} {
+		if _, err := load(mapLookup(map[string]string{"JOBMAN_CONTROL_DATABASE_URL": "postgres://unused", "JOBMAN_CONTROL_DEVELOPMENT_AUTH": "true", "JOBMAN_CONTROL_MONITORING_FEED_RETENTION": value})); err == nil {
+			t.Fatalf("invalid retention %q accepted", value)
+		}
+	}
+	result, err := load(mapLookup(map[string]string{"JOBMAN_CONTROL_DATABASE_URL": "postgres://unused", "JOBMAN_CONTROL_DEVELOPMENT_AUTH": "true"}))
+	if err != nil || result.MonitoringFeedRetention != 30*24*time.Hour {
+		t.Fatalf("retention=%v,%v", result.MonitoringFeedRetention, err)
+	}
+}
