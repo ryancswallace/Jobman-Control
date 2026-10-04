@@ -55,6 +55,42 @@ func (store *Store) Capabilities(ctx context.Context) (domain.ControlCapabilitie
 	return result, nil
 }
 
+// Retained terminal history contributes only narrow lifecycle facts. Execution
+// confidence is needed exclusively for active jobs, so do not probe runs or
+// materialize workload/label documents for every retained history row.
+const namespaceSummaryQuery = `
+ WITH scope AS (
+   SELECT n.id,n.name FROM namespaces AS n
+   JOIN authorized_memberships AS m ON m.namespace_id=n.id
+   JOIN principals AS p ON p.id=m.principal_id
+   WHERE p.issuer=$1 AND p.subject=$2 AND n.name=$3
+ ), bounds AS (
+   SELECT COALESCE($4::timestamptz, statement_timestamp()-interval '24 hours') AS since,
+     COALESCE($5::timestamptz, statement_timestamp()) AS until
+ ), scoped_jobs AS (
+   SELECT j.id,j.phase,j.outcome,j.completed_at FROM scope JOIN jobs AS j ON j.namespace_id=scope.id
+ ), counts AS (
+   SELECT count(*)::text AS total,
+     (count(*) FILTER (WHERE phase <> 'terminal'))::text AS active,
+     (count(*) FILTER (WHERE phase IN ('accepted','assigning','accepted_execution')))::text AS awaiting,
+     (count(*) FILTER (WHERE phase = 'terminal' AND completed_at IS NULL))::text AS missing_completion
+   FROM scoped_jobs
+ ), attention AS (
+   SELECT count(*)::text AS total FROM scoped_jobs AS j
+   JOIN LATERAL (
+     SELECT execution.observation_confidence FROM runs AS r
+     JOIN executions AS execution ON execution.run_id=r.id WHERE r.job_id=j.id
+     ORDER BY r.run_number DESC LIMIT 1
+   ) AS e ON true
+   WHERE j.phase <> 'terminal' AND e.observation_confidence IN ('stale','uncertain','lost')
+ )
+ SELECT scope.id::text,scope.name,statement_timestamp(),bounds.since,bounds.until,
+   counts.total,counts.active,counts.awaiting,attention.total,counts.missing_completion,
+   COALESCE((SELECT jsonb_object_agg(phase,total) FROM (SELECT phase,count(*)::text AS total FROM scoped_jobs GROUP BY phase) AS counts),'{}'::jsonb),
+   COALESCE((SELECT jsonb_object_agg(outcome,total) FROM (SELECT outcome,count(*)::text AS total FROM scoped_jobs WHERE phase='terminal' AND completed_at >= bounds.since AND completed_at < bounds.until GROUP BY outcome) AS counts),'{}'::jsonb)
+ FROM scope CROSS JOIN bounds CROSS JOIN counts CROSS JOIN attention
+ `
+
 // NamespaceSummary computes authorized complete counts in one statement.
 func (store *Store) NamespaceSummary(ctx context.Context, principal domain.Principal, namespace string, from, before *time.Time) (domain.NamespaceSummary, error) {
 	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.NamespaceSummary, error) {
@@ -69,33 +105,7 @@ func (store *Store) NamespaceSummary(ctx context.Context, principal domain.Princ
 		}
 		var result domain.NamespaceSummary
 		var phases, outcomes []byte
-		err := tx.QueryRow(ctx, `
- WITH scope AS (
-   SELECT n.id,n.name FROM namespaces AS n
-   JOIN authorized_memberships AS m ON m.namespace_id=n.id
-   JOIN principals AS p ON p.id=m.principal_id
-   WHERE p.issuer=$1 AND p.subject=$2 AND n.name=$3
- ), bounds AS (
-   SELECT COALESCE($4::timestamptz, statement_timestamp()-interval '24 hours') AS since,
-     COALESCE($5::timestamptz, statement_timestamp()) AS until
- ), scoped_jobs AS (
-   SELECT j.*, e.observation_confidence FROM scope JOIN jobs AS j ON j.namespace_id=scope.id
-   LEFT JOIN LATERAL (
-     SELECT execution.observation_confidence FROM runs AS r
-     JOIN executions AS execution ON execution.run_id=r.id WHERE r.job_id=j.id
-     ORDER BY r.run_number DESC LIMIT 1
-   ) AS e ON true
- )
- SELECT scope.id::text,scope.name,statement_timestamp(),bounds.since,bounds.until,
-   (SELECT count(*)::text FROM scoped_jobs),
-   (SELECT count(*)::text FROM scoped_jobs WHERE phase <> 'terminal'),
-   (SELECT count(*)::text FROM scoped_jobs WHERE phase IN ('accepted','assigning','accepted_execution')),
-   (SELECT count(*)::text FROM scoped_jobs WHERE phase <> 'terminal' AND observation_confidence IN ('stale','uncertain','lost')),
-   (SELECT count(*)::text FROM scoped_jobs WHERE phase = 'terminal' AND completed_at IS NULL),
-   COALESCE((SELECT jsonb_object_agg(phase,total) FROM (SELECT phase,count(*)::text AS total FROM scoped_jobs GROUP BY phase) AS counts),'{}'::jsonb),
-   COALESCE((SELECT jsonb_object_agg(outcome,total) FROM (SELECT outcome,count(*)::text AS total FROM scoped_jobs WHERE phase='terminal' AND completed_at >= bounds.since AND completed_at < bounds.until GROUP BY outcome) AS counts),'{}'::jsonb)
- FROM scope CROSS JOIN bounds
- `, principal.Issuer, principal.Subject, namespace, from, before).Scan(&result.NamespaceID, &result.Namespace, &result.AsOf, &result.CompletedFrom, &result.CompletedBefore, &result.Total, &result.Active, &result.AwaitingExecution, &result.EvidenceAttention, &result.MissingCompletionTime, &phases, &outcomes)
+		err := tx.QueryRow(ctx, namespaceSummaryQuery, principal.Issuer, principal.Subject, namespace, from, before).Scan(&result.NamespaceID, &result.Namespace, &result.AsOf, &result.CompletedFrom, &result.CompletedBefore, &result.Total, &result.Active, &result.AwaitingExecution, &result.EvidenceAttention, &result.MissingCompletionTime, &phases, &outcomes)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.NamespaceSummary{}, domain.ErrForbidden
 		}
