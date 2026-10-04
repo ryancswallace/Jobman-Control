@@ -113,9 +113,9 @@ func TestSyntheticDirectoryScaleBounds(t *testing.T) {
 		},
 		func(s *fixtureState) { s.Groups[0].Members = make([]string, 33) },
 	} {
-		copy := fixtureState{Revision: state.Revision, Users: append([]stateUser{}, state.Users...), Groups: append([]stateGroup{}, state.Groups...)}
-		mutate(&copy)
-		if validateState(copy) == nil {
+		candidate := fixtureState{Revision: state.Revision, Users: append([]stateUser{}, state.Users...), Groups: append([]stateGroup{}, state.Groups...)}
+		mutate(&candidate)
+		if validateState(candidate) == nil {
 			t.Fatal("synthetic directory bound was not enforced")
 		}
 	}
