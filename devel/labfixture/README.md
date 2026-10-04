@@ -150,7 +150,9 @@ targets, agents, jobs, log objects, trust material, group memberships and
 `fixture-info.json`. The additional catalog entry must be included explicitly in
 Dashboard acceptance expectations and its exact generation in the broker mapping.
 
-Use a separately reviewed exact helper build, with the same migration set as the
+This mode requires POSIX private permissions and directory fsync and rejects
+Windows before reading or writing fixture files. Use a separately reviewed exact
+helper build, with the same migration set as the
 running synthetic Control. First apply the reviewed source upgrade through the
 Lab's dedicated-database/instance-guarded upgrade procedure. This mode checks
 `CheckMigrations` and never runs migrations. It requires the existing private

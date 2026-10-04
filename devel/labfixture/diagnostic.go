@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -73,6 +74,9 @@ func diagnosticEnvironment(data []byte) (map[string]string, error) {
 }
 
 func prepareDiagnostic(ctx context.Context, root, databasePath, logRoot, deployment string) error {
+	if runtime.GOOS == "windows" {
+		return errors.New("diagnostic fixture requires POSIX private permissions and directory sync")
+	}
 	if deployment != diagnosticDeployment || !filepath.IsAbs(logRoot) || filepath.Clean(logRoot) != logRoot || logRoot == "/" || !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return errors.New("explicit isolated diagnostic paths and deployment required")
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,9 @@ import (
 )
 
 func TestDiagnosticPrivateInputAndExclusiveReceipt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("private POSIX modes and directory fsync are unavailable on Windows")
+	}
 	root := t.TempDir()
 	path := filepath.Join(root, "receipt.json")
 	if err := writeDiagnosticJSON(root, "receipt.json", map[string]bool{"synthetic": true}); err != nil {
@@ -51,6 +55,9 @@ func TestDiagnosticPrivateInputAndExclusiveReceipt(t *testing.T) {
 	if _, err := readDiagnosticPrivate(path, 1024); err == nil {
 		t.Fatal("public input accepted")
 	}
+}
+
+func TestDiagnosticEnvironment(t *testing.T) {
 	for _, input := range []string{"malformed", "OTHER=\"value\"", "JOBMAN_CONTROL_A=\"a\"\nJOBMAN_CONTROL_A=\"b\"", "JOBMAN_CONTROL_A=null", "JOBMAN_CONTROL_A=\"line\\nsecret\""} {
 		if _, err := diagnosticEnvironment([]byte(input)); err == nil {
 			t.Fatal("ambiguous environment accepted")
@@ -63,6 +70,13 @@ func TestDiagnosticPrivateInputAndExclusiveReceipt(t *testing.T) {
 
 func TestDiagnosticPreflightDoesNotTouchExistingFixture(t *testing.T) {
 	root, spool := t.TempDir(), t.TempDir()
+	if runtime.GOOS == "windows" {
+		err := prepareDiagnostic(t.Context(), root, "absent", spool, diagnosticDeployment)
+		if err == nil || !strings.Contains(err.Error(), "POSIX") {
+			t.Fatal("unsupported platform was not rejected before file access")
+		}
+		return
+	}
 	if err := os.Chmod(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
