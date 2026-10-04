@@ -117,6 +117,8 @@ func New(options Options) (http.Handler, error) {
 	mux.Handle("POST /v1/namespaces/{namespace}/graphs/{graphID}/cancel", serverAPI.client(serverAPI.cancelGraph))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs", serverAPI.client(serverAPI.listJobs))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}", serverAPI.client(serverAPI.getJob))
+	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/runs", serverAPI.client(serverAPI.listRuns))
+	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/runs/{runID}", serverAPI.client(serverAPI.getRun))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/logs", serverAPI.client(serverAPI.getJobLogs))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/log-chunks", serverAPI.client(serverAPI.listLogChunks))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/artifact-metadata", serverAPI.client(serverAPI.listArtifactMetadata))

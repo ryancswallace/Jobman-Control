@@ -1072,6 +1072,51 @@ paths:
         "400": {$ref: "#/components/responses/ClientError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/runs:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listRuns
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      description: >-
+        Factual run references, newest run number first. Requires jobs.read in the
+        repository transaction. A ten-minute continuation binds principal, source
+        instance, recovery epoch, authorization version, job and initial run ceiling.
+        No commands, workload specifications, event timeline or storage paths.
+      parameters:
+        - {name: pageToken, in: query, schema: {type: string, minLength: 1, maxLength: 1024}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        "200": {description: Current facts for runs at or below the initial run-number ceiling; an unassigned or imported job may have no runs., content: {application/json: {schema: {$ref: "#/components/schemas/RunList"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/runs/{runId}:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getRun
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      description: Read one actual run belonging to this job with current jobs.read authorization. No query parameters.
+      responses:
+        "200": {description: Current run facts, content: {application/json: {schema: {$ref: "#/components/schemas/RunDetail"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/jobs/{jobId}/log-chunks:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
@@ -2289,6 +2334,44 @@ components:
               code: {type: string}
               affects: {type: array, items: {type: string}}
         redaction_notices: {type: array, maxItems: 0, items: {type: object}, description: No source content is included that requires value redaction; unsupported disclosures are omissions.}
+    JobRun:
+      type: object
+      additionalProperties: false
+      required: [id, number, phase, desiredState, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        number: {type: string, pattern: "^[1-9][0-9]*$"}
+        phase: {type: string}
+        desiredState: {type: string}
+        outcome: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time, description: "Metadata update time, not an execution lifecycle timestamp."}
+        executionId: {type: string, format: uuid}
+        executionPhase: {type: string}
+        targetId: {type: string, format: uuid}
+        targetGenerationId: {type: string, format: uuid}
+        backend: {type: string}
+        confidence: {type: string}
+    RunList:
+      allOf:
+        - {$ref: "#/components/schemas/ManifestAuthority"}
+        - type: object
+          required: [apiVersion, kind, items, total]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: RunList}
+            items: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/JobRun"}}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            nextPageToken: {type: string, maxLength: 1024}
+    RunDetail:
+      allOf:
+        - {$ref: "#/components/schemas/ManifestAuthority"}
+        - type: object
+          required: [apiVersion, kind, run]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: RunDetail}
+            run: {$ref: "#/components/schemas/JobRun"}
     ManifestAuthority:
       type: object
       required: [asOf, namespace, namespaceId, jobId, recoveryEpoch, authorizationVersion, authorizationCheckedAt]

@@ -7,6 +7,9 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Bounded authorized run catalogs and run detail for historical log, artifact and
+  evidence selection, with exact run identity and current source authority.
+
 - Add service-only durable terminal-event checkpoints and bounded feeds, ordered
   transactional outbox publication, explicit restore/scope/retention gaps,
   authenticated source/scope/position cursors, independent 30-day default

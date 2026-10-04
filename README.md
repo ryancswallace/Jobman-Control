@@ -239,3 +239,6 @@ Durable terminal-event ingestion for independently registered Dashboard services
 available through [monitoring checkpoints and events](docs/MONITORING_EVENTS.md),
 with ordered transactional publication, authenticated source/scope cursors, and
 explicit retention/recovery gaps.
+
+[Run monitoring](docs/RUN_MONITORING.md) exposes bounded run references for
+historical logs, artifacts and evidence without an event timeline.
