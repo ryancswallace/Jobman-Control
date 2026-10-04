@@ -375,3 +375,54 @@ absence of new execution events, rejection of repeats and conversion of all
 `JOBMAN_CONTROL_TEST_DATABASE_URL` and `JOBMAN_CONTROL_TEST_SCALE=1`. Offline
 guards exercise strict input bounds, additive drafts and unfinished-operation
 refusals. These checks do not constitute a live scale-performance result.
+
+## Admit an inert graph at the supported ceiling
+
+The operator-only `graph-ceiling` mode uses the existing primary
+`dashboard-operations` namespace to admit one synthetic graph with 10,000 nodes
+and 100,000 dependencies. It creates one dedicated host target with no agent or
+enrollment. Every child uses normal job/graph admission and remains accepted
+without a run or execution. The helper never invokes an executor or scheduler.
+
+Use an independently reviewed Lab driver to stage an exact helper build and run
+`--action preflight` first. The driver must verify the private source root owner,
+file owners and link counts, pin the current source process/schema/identity,
+and preserve its original snapshot. The helper verifies the fixed primary
+instance/database, verified TLS, current Alice administrator and Bob denial,
+private source files, policy revision and current nonterminal count. It rejects
+a graph limit below 10,000 or existing fixed graph/target names.
+
+When the existing queued-job limit would be exceeded, the proposed policy changes
+only `maxQueuedJobs` by exactly 10,000. A separately approved `--action quota`
+uses the normal revision-checked namespace policy update. If existing headroom
+is sufficient, it records the unchanged policy. Never lower the limit afterward
+or cancel existing jobs to make room. `--config` names the exact retained
+preflight JSON; `--output` is a new private directory for receipts.
+
+Then `--action seed` creates the inert target and graph through normal Store
+operations. Exclusive intent files precede mutations; completion files bind the
+helper revision, source identity, policy and exact public graph manifest.
+An unfinished operation stops for inspection, without deleting receipts or
+repeating admission. `--action verify` checks only completed evidence and current
+source facts. No mode migrates the database, updates directory grants, changes
+Control/Dashboard configuration or restarts services. Source service binaries
+remain independent from this operator helper.
+
+The canonical graph request exceeds the ordinary HTTP admission body limit, so
+the helper calls the same bounded Store admission directly; it does not increase
+that HTTP limit. Clients inspect bounded node/dependency pages and neighborhoods.
+Root node zero has the whole 10,000/100,000 neighborhood; node one has 12 nodes
+and 66 induced edges; the final node has two nodes and one edge.
+
+`TestGraphCeilingAdmissionIntegration` requires both
+`JOBMAN_CONTROL_TEST_DATABASE_URL` and `JOBMAN_CONTROL_TEST_GRAPH_CEILING=1`.
+It uses a disposable schema, demonstrates the original queue collision and
+normal policy update, traverses every admitted node/dependency page, checks the
+three neighborhood totals, preserves an existing job through identical before
+and after read projections, and proves no runs/executions or agents were created.
+The 2026-10-04 verified-TLS PostgreSQL run passed in 81.52 seconds (83.005 seconds
+including the race-test process). `AsOf` may advance between reads; all durable
+job fields remain equal. Earlier verifier SQL/projection test failures were
+retained and repaired before this result. This is repository admission evidence;
+live Lab admission, HTTP traversal, rendered clients and physical-device
+accessibility remain separate acceptance gates.

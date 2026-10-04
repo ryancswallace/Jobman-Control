@@ -96,7 +96,7 @@ func run() error {
 	action := flags.String("action", "", "notification scenario prepare or complete")
 	scenarioCase := flags.String("case", "", "notification scenario first or stopped")
 	if len(os.Args) < 2 {
-		return errors.New("choose prepare, diagnostic, notifications, scale or directory")
+		return errors.New("choose prepare, diagnostic, notifications, scale, graph-ceiling or directory")
 	}
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		return err
@@ -114,6 +114,17 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	switch os.Args[1] {
+	case "graph-ceiling":
+		if profile.secondary() {
+			return errors.New("ceiling graph requires the primary fixture")
+		}
+		ceilingContext, stop := context.WithTimeout(ctx, 8*time.Minute)
+		defer stop()
+		value, err := graphCeilingAction(ceilingContext, *root, *database, *output, *input, *action)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(value)
 	case "scale":
 		scaleContext, stop := context.WithTimeout(ctx, 8*time.Minute)
 		defer stop()
