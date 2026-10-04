@@ -87,6 +87,7 @@ func run() error {
 	profileName := flags.String("profile", "", "fixed primary or secondary-v1 synthetic fixture")
 	directoryRoot := flags.String("directory-root", "", "separate private secondary LDAPS material directory")
 	root := flags.String("root", "", "absolute private fixture directory")
+	output := flags.String("output", "", "separate empty private scale preparation output directory")
 	input := flags.String("config", "", "public approved synthetic identities JSON")
 	database := flags.String("database-url-file", "", "private TLS DSN file for the selected fixed fixture database")
 	logRoot := flags.String("log-root", "", "absolute synthetic log object root")
@@ -95,7 +96,7 @@ func run() error {
 	action := flags.String("action", "", "notification scenario prepare or complete")
 	scenarioCase := flags.String("case", "", "notification scenario first or stopped")
 	if len(os.Args) < 2 {
-		return errors.New("choose prepare, diagnostic, notifications or directory")
+		return errors.New("choose prepare, diagnostic, notifications, scale or directory")
 	}
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		return err
@@ -107,12 +108,16 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if (!profile.secondary() || os.Args[1] != "prepare") && *directoryRoot != "" {
+	if os.Args[1] != "scale" && (!profile.secondary() || os.Args[1] != "prepare") && *directoryRoot != "" {
 		return errors.New("primary fixture has no separate directory export")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	switch os.Args[1] {
+	case "scale":
+		scaleContext, stop := context.WithTimeout(ctx, 8*time.Minute)
+		defer stop()
+		return prepareScale(scaleContext, *root, *input, *database, *directoryRoot, *output, profile)
 	case "prepare":
 		if !filepath.IsAbs(*logRoot) || *logRoot == "/" {
 			return errors.New("separate synthetic log root required")

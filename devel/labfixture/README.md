@@ -321,3 +321,57 @@ cancellation event, unchanged prior jobs and rejection of a same-name job on a
 different target. These tests do not apply or deploy the second source. Live
 Dashboard registry extension, source-qualified aggregation, revocation and
 notification acceptance remain separate reviewed Lab actions.
+
+
+## Add accepted-scale monitoring metadata
+
+The operator-only `scale` mode adds new metadata for the Dashboard HTTP scale
+harness. It admits 50 pending jobs per namespace using normal Store admission
+and inserts 10,000 explicitly imported success records per namespace. No agent,
+run, execution, terminal-transition event or log object is invented. Primary
+uses ten new `dashboard-scale-01`–`dashboard-scale-10` namespaces; secondary uses
+five. Existing identities, namespaces and job rows are preserved.
+
+The input contains the exact existing Control `instanceId`, the fixed Lab issuer,
+a UTC `historyAt` between one minute and seven days before preparation, and
+25 `users`. Each has its actual newly provisioned immutable Keycloak `subject`,
+`directoryId` `74000000-0000-4000-8000-000000000001` through `…000025`, and name
+`Synthetic scale 01` through `Synthetic scale 25`. Provisioning those accounts
+and privately storing their passwords is a separate Lab operation.
+
+```sh
+jobman-control-lab-helper scale --profile secondary-v1 \
+  --root /etc/jobman-dashboard-secondary/control \
+  --directory-root /etc/jobman-dashboard-secondary/directory \
+  --config /private/staging/scale-input.json \
+  --database-url-file /private/staging/source-database-url \
+  --output /private/staging/scale-output
+```
+
+Paths above are examples for a separately reviewed Lab driver. Inputs and output
+use private regular files/directories. Secondary operation needs privileged
+operator access to read the separate directory's synthetic state; no LDAP key is
+copied. The fixed dedicated database, public schema, source instance/epoch,
+existing private environment and migration set must match. The pool is bounded
+to four connections, and a source-scoped advisory lock prevents concurrent scale
+seeding. An exclusive durable start receipt precedes writes. Existing scale
+names/identities, partial/completed receipts or directory-recovery receipts stop
+the operation; do not remove receipts merely to retry.
+
+Outputs are `seed.json`, `directory.after.json`, `directory-state.after.json`
+and `receipt.json`. The latter binds the input and existing directory-file
+hashes. Only additive drafts are written: the helper does not install them,
+restart services, extend delegation allowlists or alter Dashboard configuration.
+The ordinary direct-LDAPS reconciliation path must adopt the new namespaces,
+remove temporary bootstrap grants and verify viewer-only access before any
+Dashboard scope is exposed. Namespace binding changes require explicit feed
+recovery under the normal event-recovery procedure. Preserve hold state and
+existing memberships. Never insert verified grants directly into PostgreSQL.
+
+`TestScaleSeedIntegration` uses a disposable schema and real TLS directory
+reader to validate the secondary 50,250-row envelope, old-row preservation,
+absence of new execution events, rejection of repeats and conversion of all
+25 accounts to direct viewer grants. It requires both
+`JOBMAN_CONTROL_TEST_DATABASE_URL` and `JOBMAN_CONTROL_TEST_SCALE=1`. Offline
+guards exercise strict input bounds, additive drafts and unfinished-operation
+refusals. These checks do not constitute a live scale-performance result.
