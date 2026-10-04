@@ -166,7 +166,10 @@ func serveDirectoryConnectionProfile(ctx context.Context, connection net.Conn, r
 }
 
 func validateState(state fixtureState) error {
-	if state.Revision < 1 || len(state.Users) > 8 || len(state.Groups) > 16 {
+	// The integrated scale fixture needs 25 additional viewers alongside the
+	// original Alice/Bob accounts, and 10 new namespace groups. Keep the test
+	// directory finite; this does not change the production LDAP reader limits.
+	if state.Revision < 1 || len(state.Users) > 32 || len(state.Groups) > 32 {
 		return errors.New("invalid synthetic directory bounds")
 	}
 	seen := map[string]bool{}
@@ -178,7 +181,7 @@ func validateState(state fixtureState) error {
 	}
 	groups := map[string]bool{}
 	for _, group := range state.Groups {
-		if !domain.IsID(group.ID) || groups[group.ID] || seen[group.ID] || len(group.Members) > 8 {
+		if !domain.IsID(group.ID) || groups[group.ID] || seen[group.ID] || len(group.Members) > 32 {
 			return errors.New("invalid synthetic group")
 		}
 		groups[group.ID] = true
