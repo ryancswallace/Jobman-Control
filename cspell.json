@@ -103,6 +103,7 @@
     "govulncheck",
     "healthz",
     "healthcheck",
+    "HMAC",
     "homebrewformula",
     "httpapi",
     "idempotency",

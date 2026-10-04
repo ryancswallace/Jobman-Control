@@ -237,4 +237,5 @@ metadata with verified source identity for the public core evidence collector.
 
 Durable terminal-event ingestion for independently registered Dashboard services is
 available through [monitoring checkpoints and events](docs/MONITORING_EVENTS.md),
-with ordered transactional publication and explicit retention/recovery gaps.
+with ordered transactional publication, authenticated source/scope cursors, and
+explicit retention/recovery gaps.

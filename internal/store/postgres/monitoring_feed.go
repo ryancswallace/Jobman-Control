@@ -3,6 +3,7 @@ package postgres
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -24,6 +25,8 @@ type monitoringCursor struct {
 	Position int64  `json:"position,string"`
 }
 
+const monitoringCursorDomain = "jobman.control.monitoring-cursor/v1"
+
 func monitoringScope(principal domain.Principal) string {
 	ids := slices.Clone(principal.Delegation.NamespaceIDs)
 	slices.Sort(ids)
@@ -31,21 +34,40 @@ func monitoringScope(principal domain.Principal) string {
 	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
-func encodeMonitoringCursor(cursor monitoringCursor) string {
+func (store *Store) monitoringCursorMAC(data []byte) []byte {
+	mac := hmac.New(sha256.New, store.tokenKey)
+	_, _ = mac.Write([]byte(monitoringCursorDomain))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write(data)
+	return mac.Sum(nil)
+}
+
+func (store *Store) encodeMonitoringCursor(cursor monitoringCursor) string {
+	if len(store.tokenKey) < 32 {
+		return ""
+	}
 	data, err := json.Marshal(cursor)
 	if err != nil {
 		return ""
 	}
-	return base64.RawURLEncoding.EncodeToString(data)
+	return base64.RawURLEncoding.EncodeToString(data) + "." + base64.RawURLEncoding.EncodeToString(store.monitoringCursorMAC(data))
 }
 
-func decodeMonitoringCursor(value string) (monitoringCursor, error) {
+func (store *Store) decodeMonitoringCursor(value string) (monitoringCursor, error) {
 	var cursor monitoringCursor
-	if value == "" || len(value) > 1024 {
+	if value == "" || len(value) > 1024 || len(store.tokenKey) < 32 {
 		return cursor, domain.ErrEventCursorInvalid
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(value)
+	payload, signature, ok := strings.Cut(value, ".")
+	if !ok || len(signature) != 43 {
+		return cursor, domain.ErrEventCursorInvalid
+	}
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(payload)
 	if err != nil {
+		return cursor, domain.ErrEventCursorInvalid
+	}
+	mac, err := base64.RawURLEncoding.Strict().DecodeString(signature)
+	if err != nil || !hmac.Equal(mac, store.monitoringCursorMAC(raw)) {
 		return cursor, domain.ErrEventCursorInvalid
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -54,13 +76,16 @@ func decodeMonitoringCursor(value string) (monitoringCursor, error) {
 		return cursor, domain.ErrEventCursorInvalid
 	}
 	var extra any
-	if err = decoder.Decode(&extra); !errors.Is(err, io.EOF) || !domain.IsID(cursor.Instance) || cursor.Epoch < 1 || cursor.Position < 0 || len(cursor.Scope) != 43 || encodeMonitoringCursor(cursor) != value {
+	if err = decoder.Decode(&extra); !errors.Is(err, io.EOF) || !domain.IsID(cursor.Instance) || cursor.Epoch < 1 || cursor.Position < 0 || len(cursor.Scope) != 43 || store.encodeMonitoringCursor(cursor) != value {
 		return cursor, domain.ErrEventCursorInvalid
 	}
 	return cursor, nil
 }
 
-func readMonitoringCheckpoint(ctx context.Context, tx pgx.Tx, principal domain.Principal) (result domain.MonitoringCheckpoint, head, floor int64, resultErr error) {
+func (store *Store) readMonitoringCheckpoint(ctx context.Context, tx pgx.Tx, principal domain.Principal) (result domain.MonitoringCheckpoint, head, floor int64, resultErr error) {
+	if len(store.tokenKey) < 32 {
+		return result, 0, 0, domain.ErrAuthorizationUnavailable
+	}
 	if err := authorizeMonitoringService(ctx, tx, principal); err != nil {
 		return result, 0, 0, err
 	}
@@ -73,9 +98,9 @@ func readMonitoringCheckpoint(ctx context.Context, tx pgx.Tx, principal domain.P
 		return result, 0, 0, fmt.Errorf("read monitoring checkpoint: %w", err)
 	}
 	cursor := monitoringCursor{Instance: result.ControlInstanceID, Epoch: result.RecoveryEpoch, Scope: monitoringScope(principal), Position: head}
-	result.HeadCursor = encodeMonitoringCursor(cursor)
+	result.HeadCursor = store.encodeMonitoringCursor(cursor)
 	cursor.Position = floor
-	result.OldestCursor = encodeMonitoringCursor(cursor)
+	result.OldestCursor = store.encodeMonitoringCursor(cursor)
 	return result, head, floor, nil
 }
 
@@ -83,7 +108,7 @@ func readMonitoringCheckpoint(ctx context.Context, tx pgx.Tx, principal domain.P
 // clock in the same authorized snapshot. Unpublished backlog is separate.
 func (store *Store) MonitoringCheckpoint(ctx context.Context, principal domain.Principal) (domain.MonitoringCheckpoint, error) {
 	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.MonitoringCheckpoint, error) {
-		result, _, _, err := readMonitoringCheckpoint(ctx, tx, principal)
+		result, _, _, err := store.readMonitoringCheckpoint(ctx, tx, principal)
 		return result, err
 	})
 }
@@ -95,12 +120,12 @@ func (store *Store) ReadMonitoringEvents(ctx context.Context, principal domain.P
 	if limit < 1 || limit > 200 {
 		return domain.MonitoringEventPage{}, domain.ErrEventCursorInvalid
 	}
-	cursor, err := decodeMonitoringCursor(value)
+	cursor, err := store.decodeMonitoringCursor(value)
 	if err != nil {
 		return domain.MonitoringEventPage{}, err
 	}
 	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.MonitoringEventPage, error) {
-		checkpoint, head, floor, readErr := readMonitoringCheckpoint(ctx, tx, principal)
+		checkpoint, head, floor, readErr := store.readMonitoringCheckpoint(ctx, tx, principal)
 		if readErr != nil {
 			return domain.MonitoringEventPage{}, readErr
 		}
@@ -148,7 +173,7 @@ func (store *Store) ReadMonitoringEvents(ctx context.Context, principal domain.P
 		if result.HasMore {
 			cursor.Position = result.Items[len(result.Items)-1].Position
 		}
-		result.NextCursor = encodeMonitoringCursor(cursor)
+		result.NextCursor = store.encodeMonitoringCursor(cursor)
 		return result, nil
 	})
 }

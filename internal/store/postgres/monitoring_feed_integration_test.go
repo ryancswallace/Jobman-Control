@@ -140,7 +140,7 @@ func TestMonitoringFeedPublicationIntegration(t *testing.T) {
 	if err != nil || len(second.Items) != 1 || second.Items[0].JobID != a.ID || second.Items[0].Position <= first.Items[0].Position {
 		t.Fatalf("delayed transaction lost=%#v,%v", second, err)
 	}
-	replay, err := New(f.pool, nil).ReadMonitoringEvents(ctx, f.service, initial.HeadCursor, 10)
+	replay, err := New(f.pool, f.store.tokenKey).ReadMonitoringEvents(ctx, f.service, initial.HeadCursor, 10)
 	if err != nil || len(replay.Items) != 2 || replay.Items[0].EventID != first.Items[0].EventID {
 		t.Fatal("restart changed replay identity")
 	}
@@ -268,6 +268,39 @@ func TestMonitoringFeedRetentionRecoveryAndAuthorityIntegration(t *testing.T) {
 	actor.NamespaceIDs = []string{f.otherNamespaceID}
 	if _, err = f.store.ReadMonitoringEvents(ctx, other, initial.HeadCursor, 10); !errors.Is(err, domain.ErrEventScopeChanged) {
 		t.Fatalf("changed scope=%v", err)
+	}
+	otherKey := f.key
+	otherKey.ServiceID = "dashboard-feed-other"
+	if err = f.store.RegisterDelegationKeys(ctx, []domain.DelegationKey{f.key, otherKey}); err != nil {
+		t.Fatal(err)
+	}
+	actor.ServiceID = otherKey.ServiceID
+	actor.NamespaceIDs = []string{f.namespaceID}
+	if _, err = f.store.ReadMonitoringEvents(ctx, other, initial.HeadCursor, 10); !errors.Is(err, domain.ErrEventScopeChanged) {
+		t.Fatalf("changed service=%v", err)
+	}
+	rotated := New(f.pool, []byte("fedcba9876543210fedcba9876543210"))
+	if _, err = rotated.ReadMonitoringEvents(ctx, f.service, initial.HeadCursor, 10); !errors.Is(err, domain.ErrEventCursorInvalid) {
+		t.Fatalf("cursor key rotation=%v", err)
+	}
+	newCheckpoint, err := rotated.MonitoringCheckpoint(ctx, f.service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = rotated.ReadMonitoringEvents(ctx, f.service, newCheckpoint.OldestCursor, 10); err != nil {
+		t.Fatalf("new checkpoint after key rotation=%v", err)
+	}
+	if _, err = New(f.pool, nil).MonitoringCheckpoint(ctx, f.service); !errors.Is(err, domain.ErrAuthorizationUnavailable) {
+		t.Fatal("missing persistent key issued checkpoint")
+	}
+	if _, err = f.pool.Exec(ctx, `UPDATE control_instance SET id=gen_random_uuid() WHERE singleton`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.store.ReadMonitoringEvents(ctx, f.service, initial.HeadCursor, 10); !errors.Is(err, domain.ErrEventRecoveryChanged) {
+		t.Fatalf("changed instance=%v", err)
+	}
+	if _, err = f.pool.Exec(ctx, `UPDATE control_instance SET id=$1::uuid WHERE singleton`, initial.ControlInstanceID); err != nil {
+		t.Fatal(err)
 	}
 	f.key.Enabled = false
 	if err = f.store.RegisterDelegationKeys(ctx, []domain.DelegationKey{f.key}); err != nil {

@@ -17,7 +17,7 @@ container images, command-line arguments, or ordinary logs.
 | `JOBMAN_CONTROL_DEVELOPMENT_NAMESPACE` | `default` | Development namespace |
 | `JOBMAN_CONTROL_OIDC_ISSUER` | required in OIDC mode | Exact HTTPS discovery issuer |
 | `JOBMAN_CONTROL_OIDC_AUDIENCE` | required in OIDC mode | Required token audience |
-| `JOBMAN_CONTROL_AGENT_TOKEN_KEY` | required in OIDC mode | Unpadded base64url encoding of at least 32 secret bytes |
+| `JOBMAN_CONTROL_AGENT_TOKEN_KEY` | required in OIDC mode | Unpadded base64url encoding of at least 32 secret bytes; persistent agent-token and purpose-separated monitoring-cursor key, shared by all replicas |
 | `JOBMAN_CONTROL_BOOTSTRAP_SUBJECT` | unset | Optional first administrator subject |
 | `JOBMAN_CONTROL_BOOTSTRAP_NAME` | unset | Bootstrap administrator display name |
 | `JOBMAN_CONTROL_BOOTSTRAP_NAMESPACE` | unset | Bootstrap administrator namespace |

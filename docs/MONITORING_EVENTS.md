@@ -50,9 +50,13 @@ or delivering user-visible notifications or displaying event details.
 `kind: MonitoringEventList`, the same checkpoint fields, and `items`, `nextCursor`,
 `hasMore`. The limit is 1–200. Cursor is required; duplicate, unknown, malformed,
 or invalid parameters return 400. All int64 counters are decimal JSON strings.
-Cursors are opaque, bounded, canonical tokens bound to Control instance, recovery
-epoch, registered service ID, and the exact sorted assertion namespace set.
-The payload has no credential or reusable authorization grant.
+Cursors are opaque, bounded, canonical tokens authenticated with HMAC-SHA256 and
+bound to Control instance, recovery epoch, registered service ID, the exact
+sorted assertion namespace set, and feed position. The MAC covers the canonical
+payload bytes with the purpose domain `jobman.control.monitoring-cursor/v1`,
+using the persistent `JOBMAN_CONTROL_AGENT_TOKEN_KEY`. A consumer cannot edit a
+cursor to rebind its source, scope, or position. The payload has no credential
+or reusable authorization grant; every request still checks current authority.
 
 Each item contains `eventId` (the original stable UUID), `position`, `namespaceId`,
 `jobId`, optional actual `runId`/`runNumber`, authoritative `ownerPrincipalId`,
@@ -80,6 +84,18 @@ These 409 errors require explicit recovery; the server never silently resets:
 
 Invalid future positions return 400. Removed namespaces or disabled keys fail
 current authority checks rather than exposing the old cursor's contents.
+
+Missing, malformed, unauthenticated, or altered cursors return 400
+`invalid_request`. This includes unsigned cursors from the development version
+before cursor authentication and cursors made with a different persistent key.
+Genuine, unmodified cursors retain the specific 409 source/scope/retention errors
+above. All replicas must share the same persistent key, including after a
+restart or restore. Do not randomly regenerate it at startup. Planned key
+rotation invalidates existing monitoring cursors as well as its existing agent
+token uses: hold consumers, record an explicit monitoring gap, reconcile retained
+event identities, then establish a new checkpoint under operator control. Never
+silently reset to the new head or send an old backlog as new alerts. A missing or
+short key cannot issue a checkpoint.
 
 ## Transaction and replay guarantees
 

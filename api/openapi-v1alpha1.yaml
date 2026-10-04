@@ -87,6 +87,9 @@ paths:
         authority. A next cursor can advance through events outside the whitelist
         without returning their payloads. Requires explicit recovery on retention,
         source instance/epoch, or exact namespace-scope changes. Never silently resets.
+        Cursors are authenticated with a purpose-separated persistent service key.
+        Invalid signatures, including after key rotation, return 400 invalid_request
+        and require explicit consumer reconciliation and a new checkpoint.
       parameters:
         - {name: cursor, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 1024}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
