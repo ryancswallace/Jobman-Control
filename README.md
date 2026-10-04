@@ -35,7 +35,7 @@ submit work, enforce policy, and track results.
 | Admission | Portable workload validation against target, runtime, platform, resource, log, and artifact capabilities |
 | Coordination | Idempotent submission, namespace quotas, fair dispatch, cancellation, collections, Slurm arrays, and dependency graphs |
 | Agent trust | One-time enrollment, mTLS certificates, rotating sessions, generation pinning, and replay-safe assignment acceptance |
-| Identity | OIDC users, namespace memberships, and repository-level authorization checks |
+| Identity | OIDC users, bounded namespace discovery, contributing role grants, and exact capability unions |
 | Results | Ordered execution events plus checksummed log and artifact manifests for local filesystems, NFS, and S3 |
 | Operations | Readiness, bounded Prometheus metrics, audit export, retention policy, restore holds, and completed-history import |
 

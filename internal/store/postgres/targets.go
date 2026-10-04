@@ -52,7 +52,7 @@ func (store *Store) CreateTarget(
 
 	result, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.CreateResult[domain.Target], error) {
 		authorization, authorizeErr := authorizeNamespace(
-			ctx, tx, principal, namespace, domain.RoleNamespaceAdmin,
+			ctx, tx, principal, namespace, domain.CapabilityTargetsManage,
 		)
 		if authorizeErr != nil {
 			return domain.CreateResult[domain.Target]{}, authorizeErr
@@ -130,7 +130,7 @@ func (store *Store) CreateTargetGeneration(
 
 	result, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.CreateResult[domain.Target], error) {
 		authorization, authorizeErr := authorizeNamespace(
-			ctx, tx, principal, namespace, domain.RoleNamespaceAdmin,
+			ctx, tx, principal, namespace, domain.CapabilityTargetsManage,
 		)
 		if authorizeErr != nil {
 			return domain.CreateResult[domain.Target]{}, authorizeErr
@@ -241,7 +241,7 @@ func (store *Store) UpdateTargetState(
 	}
 	result, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.CreateResult[domain.Target], error) {
 		authorization, authorizeErr := authorizeNamespace(
-			ctx, tx, principal, namespace, domain.RoleOperator, domain.RoleNamespaceAdmin,
+			ctx, tx, principal, namespace, domain.CapabilityTargetsOperate,
 		)
 		if authorizeErr != nil {
 			return domain.CreateResult[domain.Target]{}, authorizeErr
@@ -343,7 +343,7 @@ func (store *Store) GetTarget(
 	name string,
 ) (domain.Target, error) {
 	target, err := scanTarget(store.pool.QueryRow(ctx, targetSelect+`
-		JOIN memberships AS m ON m.namespace_id = n.id
+		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND t.name = $4
 	`, principal.Issuer, principal.Subject, namespace, name))
@@ -371,7 +371,7 @@ func (store *Store) ListTargets(
 		SELECT EXISTS (
 			SELECT 1
 			FROM principals AS p
-			JOIN memberships AS m ON m.principal_id = p.id
+			JOIN authorized_memberships AS m ON m.principal_id = p.id
 			JOIN namespaces AS n ON n.id = m.namespace_id
 			WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
 		)
@@ -382,7 +382,7 @@ func (store *Store) ListTargets(
 		return nil, domain.ErrForbidden
 	}
 	rows, err := store.pool.Query(ctx, targetSelect+`
-		JOIN memberships AS m ON m.namespace_id = n.id
+		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
 		ORDER BY t.name

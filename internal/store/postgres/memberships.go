@@ -36,7 +36,7 @@ func (store *Store) PutMembership(
 
 	result, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.CreateResult[domain.Membership], error) {
 		authorization, authorizeErr := authorizeNamespace(
-			ctx, tx, actor, namespace, domain.RoleNamespaceAdmin,
+			ctx, tx, actor, namespace, domain.CapabilityMembershipsManage,
 		)
 		if authorizeErr != nil {
 			return domain.CreateResult[domain.Membership]{}, authorizeErr

@@ -20,7 +20,7 @@ func (store *Store) GetJobArtifacts(
 		SELECT EXISTS (
 			SELECT 1 FROM jobs AS j
 			JOIN namespaces AS n ON n.id = j.namespace_id
-			JOIN memberships AS m ON m.namespace_id = n.id
+			JOIN authorized_memberships AS m ON m.namespace_id = n.id
 			JOIN principals AS p ON p.id = m.principal_id
 			WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND j.id = $4
 		)

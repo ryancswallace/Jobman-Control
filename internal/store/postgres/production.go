@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -55,7 +56,7 @@ func (store *Store) GetNamespacePolicy(
 			policy.revision, policy.created_at, policy.updated_at
 		FROM namespace_policies AS policy
 		JOIN namespaces AS n ON n.id = policy.namespace_id
-		JOIN memberships AS membership ON membership.namespace_id = n.id
+		JOIN authorized_memberships AS membership ON membership.namespace_id = n.id
 		JOIN principals AS principal ON principal.id = membership.principal_id
 		WHERE principal.issuer = $1 AND principal.subject = $2 AND n.name = $3
 	`, principal.Issuer, principal.Subject, namespace))
@@ -86,7 +87,7 @@ func (store *Store) UpdateNamespacePolicy(
 	}
 	policy, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.NamespacePolicy, error) {
 		authorization, authErr := authorizeNamespace(
-			ctx, tx, principal, namespace, domain.RoleNamespaceAdmin,
+			ctx, tx, principal, namespace, domain.CapabilityPolicyManage,
 		)
 		if authErr != nil {
 			return domain.NamespacePolicy{}, authErr
@@ -170,20 +171,20 @@ func (store *Store) ExportAudit(
 		return domain.AuditPage{}, errors.New("audit export cursor or limit is invalid")
 	}
 	var namespaceID string
-	var role string
+	var roles []string
 	if err := store.pool.QueryRow(ctx, `
-		SELECT n.id::text, membership.role
+		SELECT n.id::text, membership.roles
 		FROM namespaces AS n
-		JOIN memberships AS membership ON membership.namespace_id = n.id
+		JOIN authorized_memberships AS membership ON membership.namespace_id = n.id
 		JOIN principals AS principal ON principal.id = membership.principal_id
 		WHERE principal.issuer = $1 AND principal.subject = $2 AND n.name = $3
-	`, principal.Issuer, principal.Subject, namespace).Scan(&namespaceID, &role); err != nil {
+	`, principal.Issuer, principal.Subject, namespace).Scan(&namespaceID, &roles); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.AuditPage{}, domain.ErrForbidden
 		}
 		return domain.AuditPage{}, fmt.Errorf("authorize audit export: %w", err)
 	}
-	if role != domain.RoleOperator && role != domain.RoleNamespaceAdmin {
+	if !slices.Contains(domain.EffectiveCapabilities(roles), domain.CapabilityAuditRead) {
 		return domain.AuditPage{}, domain.ErrForbidden
 	}
 	rows, err := store.pool.Query(ctx, `
@@ -193,9 +194,13 @@ func (store *Store) ExportAudit(
 			COALESCE(event.request_digest, ''), COALESCE(event.idempotency_key, ''),
 			event.details::text, event.occurred_at
 		FROM audit_events AS event
+        JOIN authorized_memberships AS membership ON membership.namespace_id = event.namespace_id
+        JOIN principals AS actor ON actor.id = membership.principal_id
 		WHERE event.namespace_id = $1 AND event.id > $2
+            AND actor.issuer = $5 AND actor.subject = $6
+            AND membership.roles && ARRAY['operator', 'namespace_admin']::text[]
 		ORDER BY event.id LIMIT $4
-	`, namespaceID, afterID, namespace, limit+1)
+	`, namespaceID, afterID, namespace, limit+1, principal.Issuer, principal.Subject)
 	if err != nil {
 		return domain.AuditPage{}, fmt.Errorf("export audit events: %w", err)
 	}

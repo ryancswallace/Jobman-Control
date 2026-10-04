@@ -128,7 +128,7 @@ func (store *Store) GetJob(
 			current_execution.confidence_updated_at
 		FROM jobs AS j
 		JOIN namespaces AS n ON n.id = j.namespace_id
-		JOIN memberships AS m ON m.namespace_id = n.id
+		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
 		LEFT JOIN LATERAL (
@@ -181,7 +181,7 @@ func (store *Store) ListJobs(
 		SELECT EXISTS (
 			SELECT 1
 			FROM principals AS p
-			JOIN memberships AS m ON m.principal_id = p.id
+			JOIN authorized_memberships AS m ON m.principal_id = p.id
 			JOIN namespaces AS n ON n.id = m.namespace_id
 			WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
 		)
@@ -209,7 +209,7 @@ func (store *Store) ListJobs(
 			current_execution.confidence_updated_at
 		FROM jobs AS j
 		JOIN namespaces AS n ON n.id = j.namespace_id
-		JOIN memberships AS m ON m.namespace_id = n.id
+		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
 		LEFT JOIN LATERAL (
@@ -274,7 +274,7 @@ func authorizeSubmission(
 ) (namespaceAuthorization, error) {
 	return authorizeNamespace(
 		ctx, tx, principal, namespace,
-		domain.RoleSubmitter, domain.RoleOperator, domain.RoleNamespaceAdmin,
+		domain.CapabilityJobsSubmit,
 	)
 }
 

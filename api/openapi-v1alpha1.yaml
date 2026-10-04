@@ -48,6 +48,78 @@ paths:
             text/plain:
               schema: {type: string}
         "503": {$ref: "#/components/responses/ServerError"}
+  /v1/me:
+    get:
+      operationId: getCurrentPrincipal
+      description: >-
+        Discover only the authenticated principal's currently authorized namespaces.
+        Each page is a database snapshot, not directory freshness evidence. Roles and
+        capabilities are sorted exact unions. Unknown principals receive an empty list.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: pageToken
+          in: query
+          schema: {type: string, maxLength: 48}
+      responses:
+        "200":
+          description: Current principal and one authorized namespace page.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CurrentPrincipal"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/membership-grants/{grantID}:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: grantID
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: putMembershipGrant
+      description: >-
+        Namespace administrators create one immutable manual contribution, using a
+        caller-generated UUID as its idempotency identity. Repeating the same identity,
+        principal and role returns the grant. Changing its principal/role or recreating
+        a revoked UUID fails with conflict. It cannot overwrite legacy or directory
+        provenance. No Idempotency-Key is needed for this resource-addressed operation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MembershipGrantRequest"}
+      responses:
+        "200":
+          description: Created or existing identical active contribution.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MembershipGrant"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: revokeMembershipGrant
+      description: >-
+        Revoke one manual contribution. Repeated revocation returns its original
+        revocation time. Remaining contributions retain their capabilities. Legacy
+        and directory contributions cannot be revoked with this route.
+      responses:
+        "200":
+          description: Revoked contribution, including repeated revocation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MembershipGrant"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/policy:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
@@ -900,6 +972,69 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
   schemas:
+    CurrentPrincipal:
+      type: object
+      required: [apiVersion, kind, principal, authorizationCheckedAt, namespaces]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: CurrentPrincipal}
+        principal:
+          type: object
+          required: [issuer, subject]
+          properties:
+            id: {type: string, format: uuid}
+            issuer: {type: string}
+            subject: {type: string}
+            displayName: {type: string}
+        authorizationCheckedAt: {type: string, format: date-time}
+        namespaces:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            required: [id, name, roles, capabilities, authorizationVersion]
+            properties:
+              id: {type: string, format: uuid}
+              name: {$ref: "#/components/schemas/Name"}
+              roles:
+                type: array
+                uniqueItems: true
+                items: {enum: [viewer, submitter, operator, namespace_admin]}
+              capabilities:
+                type: array
+                uniqueItems: true
+                description: Authorization capabilities, not feature availability promises.
+                items: {type: string}
+              authorizationVersion: {type: string, pattern: "^[1-9][0-9]*$"}
+        nextPageToken: {type: string}
+    MembershipGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: MembershipGrant}
+        spec: {$ref: "#/components/schemas/MembershipRequest/properties/spec"}
+    MembershipGrant:
+      type: object
+      required: [apiVersion, kind, grant]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: MembershipGrant}
+        grant:
+          type: object
+          required: [id, namespace, principalId, issuer, subject, displayName, role, provenance, createdAt]
+          properties:
+            id: {type: string, format: uuid}
+            namespace: {$ref: "#/components/schemas/Name"}
+            principalId: {type: string, format: uuid}
+            issuer: {type: string}
+            subject: {type: string}
+            displayName: {type: string}
+            role: {enum: [viewer, submitter, operator, namespace_admin]}
+            provenance: {const: manual}
+            createdAt: {type: string, format: date-time}
+            revokedAt: {type: string, format: date-time}
     Name:
       type: string
       minLength: 1
