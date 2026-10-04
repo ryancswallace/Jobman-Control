@@ -12,7 +12,7 @@ import (
 	"github.com/ryancswallace/jobman-control/internal/domain"
 )
 
-const jobSelect = `
+const jobSelectColumns = `
  SELECT j.id::text, n.name, j.name, j.labels::text, j.phase,
    j.desired_state, COALESCE(j.outcome, ''), j.placement_target,
    COALESCE(j.placement_partition, ''), j.workload_digest,
@@ -29,7 +29,9 @@ const jobSelect = `
    COALESCE(current_execution.run_id, ''), COALESCE(current_execution.run_number, ''),
    COALESCE(current_execution.execution_id, ''), COALESCE(j.collection_id::text, ''), j.collection_index,
    COALESCE(j.graph_id::text, ''), j.graph_index, COALESCE(j.graph_disposition, ''), transaction_timestamp()
- FROM jobs AS j JOIN namespaces AS n ON n.id = j.namespace_id
+`
+
+const jobSelectJoins = ` JOIN namespaces AS n ON n.id = j.namespace_id
  JOIN principals AS job_owner ON job_owner.id = j.owner_principal_id
  LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
  LEFT JOIN LATERAL (
@@ -40,6 +42,8 @@ const jobSelect = `
    WHERE current_run.job_id = j.id ORDER BY current_run.run_number DESC LIMIT 1
  ) AS current_execution ON true
 `
+
+const jobSelect = jobSelectColumns + ` FROM jobs AS j` + jobSelectJoins
 
 // Capabilities returns non-sensitive source identity and implemented features.
 func (store *Store) Capabilities(ctx context.Context) (domain.ControlCapabilities, error) {

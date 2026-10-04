@@ -201,22 +201,7 @@ func (store *Store) ListJobs(
 		if !authorized {
 			return domain.JobPage{}, domain.ErrForbidden
 		}
-		rows, err := tx.Query(ctx, jobSelect+`
-        JOIN authorized_memberships AS m ON m.namespace_id = n.id
-        JOIN principals AS p ON p.id = m.principal_id
-        WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
-            AND ($4::text = '' OR j.phase = $4 OR ($4 = 'active' AND j.phase <> 'terminal') OR ($4 = 'awaiting' AND j.phase IN ('accepted','assigning','accepted_execution')))
-            AND ($5::timestamptz IS NULL OR (j.created_at, j.id) < ($5, $6::uuid))
-            AND ($8::text = '' OR j.outcome = $8)
-            AND (NULLIF($9, '')::uuid IS NULL OR (NOT j.imported AND j.owner_principal_id = NULLIF($9, '')::uuid))
-            AND ($10::timestamptz IS NULL OR j.completed_at >= $10)
-            AND ($11::timestamptz IS NULL OR j.completed_at < $11)
-            AND ($12::timestamptz IS NULL OR j.created_at <= $12)
-        AND (NULLIF($13, '')::uuid IS NULL OR j.id = NULLIF($13, '')::uuid)
-            AND ($14::text = '' OR current_execution.observation_confidence = $14
-                OR ($14 = 'attention' AND j.phase <> 'terminal' AND current_execution.observation_confidence IN ('stale','uncertain','lost')))
-        ORDER BY j.created_at DESC, j.id DESC LIMIT $7
-	`, principal.Issuer, principal.Subject, namespace, options.Phase, beforeTime, beforeID, options.Limit+1, options.Outcome, options.OwnerPrincipalID, options.CompletedFrom, options.CompletedBefore, options.CreatedBefore, options.JobID, options.Confidence)
+		rows, err := tx.Query(ctx, jobListQuery(options.Confidence), principal.Issuer, principal.Subject, namespace, options.Phase, beforeTime, beforeID, options.Limit+1, options.Outcome, options.OwnerPrincipalID, options.CompletedFrom, options.CompletedBefore, options.CreatedBefore, options.JobID, options.Confidence)
 		if err != nil {
 			return domain.JobPage{}, fmt.Errorf("list jobs: %w", err)
 		}
