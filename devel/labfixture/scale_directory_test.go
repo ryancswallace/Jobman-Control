@@ -25,16 +25,19 @@ func TestSyntheticDirectoryScaleTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := fixtureState{Revision: 1}
-	config := directory.Config{BaseDN: fixtureBaseDN, BindDN: fixtureBindDN,
+	config := directory.Config{
+		BaseDN: fixtureBaseDN, BindDN: fixtureBindDN,
 		PasswordFile: filepath.Join(root, "directory-password"), CAFile: filepath.Join(root, "fixture-ca.crt"),
-		Mapping: domain.DirectoryMapping{SourceID: fixtureSource, Revision: 1}}
+		Mapping: domain.DirectoryMapping{SourceID: fixtureSource, Revision: 1},
+	}
 	members := []string{}
 	for i := range 27 {
 		id := fmt.Sprintf("74000000-0000-4000-8000-%012d", i+1)
 		state.Users = append(state.Users, stateUser{DirectoryID: id, Enabled: true})
 		config.Mapping.Identities = append(config.Mapping.Identities, domain.DirectoryIdentity{
 			DirectoryID: id, PrincipalID: fmt.Sprintf("75000000-0000-4000-8000-%012d", i+1),
-			Issuer: "https://issuer.example.test", Subject: fmt.Sprintf("scale-%02d", i+1)})
+			Issuer: "https://issuer.example.test", Subject: fmt.Sprintf("scale-%02d", i+1),
+		})
 		if i >= 2 {
 			members = append(members, id)
 		}
