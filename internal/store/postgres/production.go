@@ -48,7 +48,14 @@ func (store *Store) GetNamespacePolicy(
 	principal domain.Principal,
 	namespace string,
 ) (domain.NamespacePolicy, error) {
-	policy, err := scanNamespacePolicy(store.pool.QueryRow(ctx, `
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.NamespacePolicy, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityPolicyRead)
+		if authErr != nil {
+			return domain.NamespacePolicy{}, authErr
+		}
+		principal = authorization.canonical
+
+		policy, err := scanNamespacePolicy(tx.QueryRow(ctx, `
 		SELECT n.name, policy.max_active_jobs, policy.max_queued_jobs,
 			policy.max_collection_items, policy.max_graph_nodes,
 			EXTRACT(EPOCH FROM policy.idempotency_retention)::bigint,
@@ -60,14 +67,15 @@ func (store *Store) GetNamespacePolicy(
 		JOIN principals AS principal ON principal.id = membership.principal_id
 		WHERE principal.issuer = $1 AND principal.subject = $2 AND n.name = $3
 	`, principal.Issuer, principal.Subject, namespace))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.NamespacePolicy{}, domain.ErrForbidden
-	}
-	if err != nil {
-		return domain.NamespacePolicy{}, fmt.Errorf("get namespace policy: %w", err)
-	}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.NamespacePolicy{}, domain.ErrForbidden
+		}
+		if err != nil {
+			return domain.NamespacePolicy{}, fmt.Errorf("get namespace policy: %w", err)
+		}
 
-	return policy, nil
+		return policy, nil
+	})
 }
 
 // UpdateNamespacePolicy applies a complete revision-checked replacement.
@@ -167,27 +175,34 @@ func (store *Store) ExportAudit(
 	afterID int64,
 	limit int,
 ) (domain.AuditPage, error) {
-	if afterID < 0 || limit < 1 || limit > 1000 {
-		return domain.AuditPage{}, errors.New("audit export cursor or limit is invalid")
-	}
-	var namespaceID string
-	var roles []string
-	if err := store.pool.QueryRow(ctx, `
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.AuditPage, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityAuditRead)
+		if authErr != nil {
+			return domain.AuditPage{}, authErr
+		}
+		principal = authorization.canonical
+
+		if afterID < 0 || limit < 1 || limit > 1000 {
+			return domain.AuditPage{}, errors.New("audit export cursor or limit is invalid")
+		}
+		var namespaceID string
+		var roles []string
+		if err := tx.QueryRow(ctx, `
 		SELECT n.id::text, membership.roles
 		FROM namespaces AS n
 		JOIN authorized_memberships AS membership ON membership.namespace_id = n.id
 		JOIN principals AS principal ON principal.id = membership.principal_id
 		WHERE principal.issuer = $1 AND principal.subject = $2 AND n.name = $3
 	`, principal.Issuer, principal.Subject, namespace).Scan(&namespaceID, &roles); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.AuditPage{}, domain.ErrForbidden
+			}
+			return domain.AuditPage{}, fmt.Errorf("authorize audit export: %w", err)
+		}
+		if !slices.Contains(domain.EffectiveCapabilities(roles), domain.CapabilityAuditRead) {
 			return domain.AuditPage{}, domain.ErrForbidden
 		}
-		return domain.AuditPage{}, fmt.Errorf("authorize audit export: %w", err)
-	}
-	if !slices.Contains(domain.EffectiveCapabilities(roles), domain.CapabilityAuditRead) {
-		return domain.AuditPage{}, domain.ErrForbidden
-	}
-	rows, err := store.pool.Query(ctx, `
+		rows, err := tx.Query(ctx, `
 		SELECT event.id, $3::text, event.actor_kind,
 			COALESCE(event.actor_principal_id::text, ''), COALESCE(event.actor_agent_id::text, ''),
 			event.action, event.resource_type, event.resource_id::text,
@@ -201,35 +216,36 @@ func (store *Store) ExportAudit(
             AND membership.roles && ARRAY['operator', 'namespace_admin']::text[]
 		ORDER BY event.id LIMIT $4
 	`, namespaceID, afterID, namespace, limit+1, principal.Issuer, principal.Subject)
-	if err != nil {
-		return domain.AuditPage{}, fmt.Errorf("export audit events: %w", err)
-	}
-	defer rows.Close()
-	items := make([]domain.AuditEvent, 0, limit+1)
-	for rows.Next() {
-		var item domain.AuditEvent
-		var details string
-		if err = rows.Scan(
-			&item.ID, &item.Namespace, &item.ActorKind, &item.ActorPrincipalID,
-			&item.ActorAgentID, &item.Action, &item.ResourceType, &item.ResourceID,
-			&item.RequestDigest, &item.IdempotencyKey, &details, &item.OccurredAt,
-		); err != nil {
-			return domain.AuditPage{}, fmt.Errorf("scan audit event: %w", err)
+		if err != nil {
+			return domain.AuditPage{}, fmt.Errorf("export audit events: %w", err)
 		}
-		item.Details = json.RawMessage(details)
-		item.OccurredAt = item.OccurredAt.UTC()
-		items = append(items, item)
-	}
-	if err = rows.Err(); err != nil {
-		return domain.AuditPage{}, fmt.Errorf("iterate audit events: %w", err)
-	}
-	page := domain.AuditPage{Items: items}
-	if len(items) > limit {
-		page.Items = items[:limit]
-		page.NextAfterID = page.Items[len(page.Items)-1].ID
-	}
+		defer rows.Close()
+		items := make([]domain.AuditEvent, 0, limit+1)
+		for rows.Next() {
+			var item domain.AuditEvent
+			var details string
+			if err = rows.Scan(
+				&item.ID, &item.Namespace, &item.ActorKind, &item.ActorPrincipalID,
+				&item.ActorAgentID, &item.Action, &item.ResourceType, &item.ResourceID,
+				&item.RequestDigest, &item.IdempotencyKey, &details, &item.OccurredAt,
+			); err != nil {
+				return domain.AuditPage{}, fmt.Errorf("scan audit event: %w", err)
+			}
+			item.Details = json.RawMessage(details)
+			item.OccurredAt = item.OccurredAt.UTC()
+			items = append(items, item)
+		}
+		if err = rows.Err(); err != nil {
+			return domain.AuditPage{}, fmt.Errorf("iterate audit events: %w", err)
+		}
+		page := domain.AuditPage{Items: items}
+		if len(items) > limit {
+			page.Items = items[:limit]
+			page.NextAfterID = page.Items[len(page.Items)-1].ID
+		}
 
-	return page, nil
+		return page, nil
+	})
 }
 
 // OperationalSnapshot reads bounded-cardinality service health metrics.
@@ -271,22 +287,29 @@ func (store *Store) OperationalSnapshot(ctx context.Context) (domain.Operational
 	if err != nil {
 		return domain.OperationalSnapshot{}, fmt.Errorf("iterate agent metrics: %w", err)
 	}
-	var queueAgeSeconds float64
+	var queueAgeSeconds, monitoringBacklogAge, monitoringRetainedAge, monitoringRetention float64
 	if err = store.pool.QueryRow(ctx, `
 		SELECT
 			(SELECT count(*) FROM outbox WHERE published_at IS NULL),
 			(SELECT count(*) FROM executions WHERE observation_confidence = 'stale'),
 			COALESCE((SELECT EXTRACT(EPOCH FROM transaction_timestamp() - min(created_at))
 				FROM jobs WHERE phase = 'accepted'), 0),
-			reconciliation_hold, restore_epoch
+			reconciliation_hold, restore_epoch,
+ (SELECT count(*) FROM outbox WHERE topic='monitoring.job_terminal.v1' AND published_at IS NULL),
+ COALESCE((SELECT GREATEST(0,EXTRACT(EPOCH FROM statement_timestamp()-min(created_at))) FROM outbox WHERE topic='monitoring.job_terminal.v1' AND published_at IS NULL),0),
+ COALESCE((SELECT GREATEST(0,EXTRACT(EPOCH FROM statement_timestamp()-published_at)) FROM monitoring_feed ORDER BY position LIMIT 1),0),
+ (SELECT retention_seconds FROM monitoring_feed_state WHERE singleton)
 		FROM service_recovery_state
 	`).Scan(
 		&snapshot.UnpublishedOutbox, &snapshot.StaleExecutions, &queueAgeSeconds,
-		&snapshot.RecoveryHold, &snapshot.RestoreEpoch,
+		&snapshot.RecoveryHold, &snapshot.RestoreEpoch, &snapshot.MonitoringBacklog, &monitoringBacklogAge, &monitoringRetainedAge, &monitoringRetention,
 	); err != nil {
 		return domain.OperationalSnapshot{}, fmt.Errorf("read operational metrics: %w", err)
 	}
 	snapshot.OldestQueueAge = time.Duration(queueAgeSeconds * float64(time.Second))
+	snapshot.OldestMonitoringBacklogAge = time.Duration(monitoringBacklogAge * float64(time.Second))
+	snapshot.OldestRetainedMonitoringAge = time.Duration(monitoringRetainedAge * float64(time.Second))
+	snapshot.MonitoringRetention = time.Duration(monitoringRetention * float64(time.Second))
 
 	return snapshot, nil
 }

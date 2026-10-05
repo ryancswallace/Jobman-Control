@@ -8,6 +8,7 @@ support policy.
 | --- | --- |
 | Go source build | Exact patch in `go.version`; language baseline in `go.mod` |
 | PostgreSQL | PostgreSQL 17.6 in continuous integration |
+| Shared evidence development dependency | Public core `diagnostic` at `v1.8.1-0.20261003211041-62ac89b14547`; unreleased immutable development pin pending approved upstream release |
 | Client API | `jobman.control/v1alpha1` |
 | Portable workload and agent protocol | Checked-in `jobman/v1alpha1` snapshot from Jobman v1.7.0; verified unchanged in v1.8.0 |
 | Runtime archives | Linux, macOS, and Windows; amd64, arm64, and supported 386 combinations |
@@ -46,3 +47,16 @@ S3 byte transfer, and native array submission. Standalone Slurm, AWS
 infrastructure provisioning/acceptance, multiple-store/directory artifacts,
 per-execution cloud grants, retries, collection cancellation, and dependency
 optimization through native Slurm dependencies are not yet release-supported.
+
+The public shared diagnostic module pin is fetched and checksummed through Go
+modules; builds never depend on a sibling checkout or a local `replace` rule.
+It is a temporary development integration pin, not a claim that the upstream
+shared evidence contract has shipped. Production release acceptance requires the
+approved core release and an explicit consumer version update.
+
+Migration 21 adds the durable monitoring feed and explicit service-only assertion
+shape. It does not backfill old terminal jobs. Exact schema compatibility prevents
+old binaries from running after migration; rollback requires the coordinated
+restore procedure, recovery-epoch advance, and explicit consumer reconciliation.
+Original retained event UUIDs survive restores; missing backup history cannot be
+reconstructed. See [monitoring events](MONITORING_EVENTS.md).

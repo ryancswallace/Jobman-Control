@@ -49,6 +49,57 @@ Manual routes cannot create or overwrite directory/legacy provenance.
 See [the authorization upgrade guide](AUTHORIZATION_UPGRADE.md) for the capability
 catalog, migration/rollback limits, and remaining directory integration work.
 
+## Monitoring reads
+
+`GET /v1/capabilities` is unauthenticated and contains only non-sensitive source
+identity, `recoveryEpoch`, `serviceTime`, supported contract names, implemented
+feature identifiers, and page limits. The instance UUID persists in the Control
+database. A recovery epoch changes through the existing restore workflow; it is
+not a new instance identity. Connecting a copied database as an independent
+Control requires a deliberately assigned new instance identity and registry
+entry, never silent reuse of the original source identity.
+
+Job reads now expose immutable `metadata.namespaceId`, a verified original
+`metadata.owner` when known, `status.currentRun`, `status.group`, `status.imported`,
+and `status.lifecycle`. Imported standalone history has no verified original
+submitter and does not expose the importing principal as the job owner.
+Current-run numbers and summary counts use decimal strings to preserve precision.
+Original numeric job revisions remain compatible with the existing contract.
+
+`lifecycle.startedAt` and `completedAt` represent recorded source observations,
+with separate recording timestamps and provenance. A scheduler running
+observation does not claim to know the scheduler's exact launch instant.
+Prelaunch cancellation and graph disposition are Control decisions and carry
+`control_transition` provenance. Metadata updates never change lifecycle time.
+Migration 000014 backfills only retained execution observations and recorded
+history-import evidence. Older terminal jobs without reliable completion evidence
+keep their missing timestamp; no value is fabricated from `updatedAt`.
+
+Job lists accept `phase` values plus `active` (all nonterminal) and `awaiting`
+(`accepted`, `assigning`, `accepted_execution`), exact `outcome`, verified
+`ownerPrincipalId`, exact `jobId`, and `confidence` including `attention`
+(nonterminal stale/uncertain/lost). `completedFrom` is inclusive and
+`completedBefore` exclusive; `createdBefore` is an inclusive source creation
+cutoff. Timestamps use RFC3339 and must form an increasing completion window when
+both bounds are present. Unknown outcome strings produce no matches rather than
+coercion. All filters compose with the existing bounded keyset pagination.
+
+`GET /v1/namespaces/{namespace}/summary` returns one authorized complete database
+snapshot. Supply both `completedFrom` and `completedBefore`, or omit both for the
+preceding 24 hours. `total`, `active`, `awaitingExecution`, and `byPhase` cover all
+retained jobs. `byOutcome` covers the selected completion interval only;
+`missingCompletionTime` separately counts terminal jobs with no completion time.
+`evidenceAttention` counts nonterminal stale/uncertain/lost evidence and may
+overlap other indicators. Collection/graph children are jobs; wrappers are not
+added to counts. Omitted map keys mean zero in the complete authorized snapshot.
+Later drill-downs are live queries and can reflect subsequent job transitions.
+
+Delegation, directory authorization, and bounded group catalogs are documented
+in their linked contracts. Event feeds, shared evidence, and bulk log delivery
+remain separate implementation work.
+Migration 000014 uses the existing forward-only ledger; older binaries reject the
+newer schema. Back up before upgrading and use a controlled restore for rollback.
+
 ## Mutation semantics
 
 Client creation and cancellation requests require an `Idempotency-Key`.
@@ -151,3 +202,33 @@ material.
 Consumers should pin an API version, preserve unknown response fields, use
 ETags and idempotency keys as documented, bound retries, and treat all user and
 agent output as untrusted data.
+
+## Bounded group monitoring
+
+Collection and graph catalogs, summary-only reads, child pages, dependency pages,
+and bounded neighborhoods are documented in [Group monitoring](GROUP_MONITORING.md).
+These additive routes keep legacy complete group documents compatible.
+
+## Delegated service reads
+
+See [Read-only service delegation](DELEGATION.md) for the exact mTLS/JWT route
+matrix, replay protection, current-authority checks, and directory proof fields.
+See [Active Directory authorization](DIRECTORY.md) for authoritative direct-group
+reconciliation, operator mapping/transition, and stale-proof failure behavior.
+See [Bounded log and artifact metadata](MANIFESTS.md) for indexed tail/range
+selection, immutable chunk identity, and decimal-safe cursor contracts.
+Job and job-list responses include a database transaction `asOf` timestamp.
+
+See [Bounded target monitoring](TARGET_CATALOG.md) for complete target catalogs
+and namespace-authorized immutable UUID details.
+
+See [Shared diagnostic snapshots](DIAGNOSTIC_SNAPSHOTS.md) for source-pinned
+metadata evidence, omissions, current authorization and bounded run selection.
+
+### Background monitoring events
+
+Service-only `events.read` assertions authorize `GET /v1/monitoring-events/checkpoint`
+and bounded `GET /v1/monitoring-events?cursor=...&limit=100`. Ordinary users and
+represented-user assertions cannot use these routes. See
+[monitoring events](MONITORING_EVENTS.md) for source-clock activation, ordered
+publication, minimal event fields, independent retention, and explicit gaps.

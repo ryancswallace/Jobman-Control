@@ -3,9 +3,11 @@ package postgres
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -249,11 +251,15 @@ func TestStoreIntegration(t *testing.T) {
 
 	assertTableCount(ctx, t, pool, "jobs", 2)
 	assertTableCount(ctx, t, pool, "idempotency_records", 5)
-	assertTableCount(ctx, t, pool, "outbox", 4)
+	assertTableCount(ctx, t, pool, "outbox", 6)
+	var terminalEvents int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM outbox WHERE topic='monitoring.job_terminal.v1' AND payload->>'runId' IS NOT NULL AND payload->>'runNumber'='1'`).Scan(&terminalEvents); err != nil || terminalEvents != 2 {
+		t.Fatalf("actual run terminal events=%d,%v", terminalEvents, err)
+	}
 	assertTableCount(ctx, t, pool, "audit_events", 14)
 	assertTableCount(ctx, t, pool, "assignments", 2)
 	assertTableCount(ctx, t, pool, "log_streams", 4)
-	assertTableCount(ctx, t, pool, "log_chunks", 5)
+	assertTableCount(ctx, t, pool, "log_chunks", 6)
 }
 
 func TestStoreSlurmExecutionIntegration(t *testing.T) {
@@ -690,6 +696,14 @@ func TestGraphsAndProductionControlsIntegration(t *testing.T) {
 	if err != nil || imported.Job.Phase != "terminal" || imported.Job.Outcome != "success" {
 		t.Fatalf("ImportCompletedHistory() = %#v, %v", imported, err)
 	}
+	missingLogs, missingErr := store.ListLogChunks(ctx, principal, "research", imported.Job.ID, domain.LogChunkOptions{Stream: "stdout", Limit: 1})
+	if missingErr != nil || missingLogs.State != "not_captured" || missingLogs.ManifestRevision != 0 || missingLogs.RunID != "" || missingLogs.RunNumber != 0 || missingLogs.ExecutionID != "" || len(missingLogs.Chunks) != 0 {
+		t.Fatalf("imported job fabricated log/run identity=%#v,%v", missingLogs, missingErr)
+	}
+	pastEmpty := int64(1)
+	if _, missingErr = store.ListLogChunks(ctx, principal, "research", imported.Job.ID, domain.LogChunkOptions{Stream: "stdout", FromOffset: &pastEmpty, Limit: 1}); !errors.Is(missingErr, domain.ErrConflict) {
+		t.Fatalf("offset beyond absent stream accepted=%v", missingErr)
+	}
 	if _, err = store.ImportCompletedHistory(ctx, principal, "history-import-second", false, history); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("duplicate history provenance error = %v", err)
 	}
@@ -885,6 +899,60 @@ func TestStoreArtifactIntegration(t *testing.T) {
 		artifacts[0].Name != artifact.Name || artifacts[0].Checksum != artifact.Checksum {
 		t.Fatalf("GetJobArtifacts() = %#v, %v", artifacts, err)
 	}
+	page, pageErr := store.ListArtifacts(ctx, principal, "research", created.Job.ID, domain.ArtifactListOptions{RunNumber: 1, Limit: 1})
+	if pageErr != nil || page.Total != 1 || len(page.Items) != 1 || page.Items[0].RunID == "" || page.Items[0].TargetGenerationID == "" || !page.Items[0].PublishedAt.Equal(completed.ObservedAt.Truncate(time.Microsecond)) || page.AuthorizationVersion < 1 {
+		t.Fatalf("bounded artifact metadata=%#v,%v", page, pageErr)
+	}
+	// Legal 64 KiB keys can expand sixfold under JSON HTML escaping. Byte
+	// pagination must preserve all metadata without exceeding the client budget.
+	if _, err = pool.Exec(ctx, `INSERT INTO execution_artifacts(namespace_id,execution_id,name,store_name,store_version,object_key,byte_length,checksum,published_at)
+ SELECT namespace_id,execution_id,'large-'||to_char(number,'FM000'),store_name,store_version,$2,byte_length,checksum,published_at
+ FROM execution_artifacts CROSS JOIN generate_series(1,10) number WHERE execution_id=$1 AND name='result'`, assignments[0].ExecutionID, strings.Repeat("<", 65536)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO execution_artifacts(namespace_id,execution_id,name,store_name,store_version,object_key,byte_length,checksum,published_at)
+ SELECT namespace_id,execution_id,punctuation_name,store_name,store_version,object_key,byte_length,checksum,published_at
+ FROM execution_artifacts CROSS JOIN unnest(ARRAY['large.001','large_001','large0001']) punctuation_name WHERE execution_id=$1 AND name='result'`, assignments[0].ExecutionID); err != nil {
+		t.Fatal(err)
+	}
+	options := domain.ArtifactListOptions{Limit: 100}
+	seen := map[string]bool{}
+	previous := ""
+	for pages := 0; pages < 12; pages++ {
+		page, pageErr = store.ListArtifacts(ctx, principal, "research", created.Job.ID, options)
+		if pageErr != nil || page.Total != 14 || len(page.Items) == 0 {
+			t.Fatalf("byte-bounded artifacts=%d/%d,%v", page.Total, len(page.Items), pageErr)
+		}
+		encoded, encodeErr := json.Marshal(page)
+		if encodeErr != nil || len(encoded) > maximumArtifactItemsJSON+16384 {
+			t.Fatalf("artifact page exceeded encoded budget=%d,%v", len(encoded), encodeErr)
+		}
+		for _, item := range page.Items {
+			if previous >= item.Name {
+				t.Fatalf("artifact cursor order is not portable byte order: %q then %q", previous, item.Name)
+			}
+			previous = item.Name
+			if seen[item.Name] {
+				t.Fatalf("artifact repeated at byte cursor: %s", item.Name)
+			}
+			seen[item.Name] = true
+		}
+		if page.NextPageToken == "" {
+			break
+		}
+		cursor, decodeErr := base64.RawURLEncoding.DecodeString(page.NextPageToken)
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		parts := strings.Split(string(cursor), "\n")
+		if len(parts) != 2 {
+			t.Fatalf("invalid artifact cursor")
+		}
+		options.AfterExecutionID, options.AfterName = parts[0], parts[1]
+	}
+	if len(seen) != 14 {
+		t.Fatalf("byte-bounded pagination lost artifacts: %d", len(seen))
+	}
 }
 
 func testConcurrentIdempotency(
@@ -981,6 +1049,7 @@ func testExecutionLifecycle(
 		CapturedAt: time.Now().UTC(), Complete: true,
 		DocumentDigest: "sha256:" + strings.Repeat("b", 64), Document: logDocument,
 	}
+	testLegacyOverflowReplay(ctx, t, store, identity, terminalChunk)
 	replayedLog, err := store.CommitLogChunk(ctx, identity, terminalChunk)
 	if err != nil || replayedLog {
 		t.Fatalf("CommitLogChunk(out of order) = %t, %v", replayedLog, err)
@@ -988,6 +1057,10 @@ func testExecutionLifecycle(
 	streams, err := store.GetJobLogs(ctx, principal, "research", jobID)
 	if err != nil || len(streams) != 0 {
 		t.Fatalf("GetJobLogs(gapped) = %#v, %v", streams, err)
+	}
+	gapped, gapErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", Limit: 1})
+	if gapErr != nil || len(gapped.Chunks) != 0 || gapped.LastSequence != 0 || gapped.State != "open" || gapped.ManifestRevision < 1 || gapped.ExecutionID != assignment.ExecutionID {
+		t.Fatalf("bounded gap projection=%#v,%v", gapped, gapErr)
 	}
 	firstChunk := terminalChunk
 	firstChunk.Sequence = 1
@@ -998,6 +1071,11 @@ func testExecutionLifecycle(
 	firstChunk.ByteOffset = 0
 	firstChunk.Complete = false
 	firstChunk.DocumentDigest = "sha256:" + strings.Repeat("c", 64)
+	poisoned := firstChunk
+	poisoned.ObjectKey = strings.Replace(firstChunk.ObjectKey, "namespaces/research/", "namespaces/other/", 1)
+	if _, poisonErr := store.CommitLogChunk(ctx, identity, poisoned); !errors.Is(poisonErr, domain.ErrConflict) {
+		t.Fatalf("own-execution foreign-prefix publication=%v", poisonErr)
+	}
 	replayedLog, err = store.CommitLogChunk(ctx, identity, firstChunk)
 	if err != nil || replayedLog {
 		t.Fatalf("CommitLogChunk(fill gap) = %t, %v", replayedLog, err)
@@ -1011,6 +1089,25 @@ func testExecutionLifecycle(
 		streams[0].ByteLength != 6 || streams[0].State != "complete" {
 		t.Fatalf("GetJobLogs() = %#v, %v", streams, err)
 	}
+	tail, tailErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{RunNumber: 1, ExecutionID: assignment.ExecutionID, Stream: "stdout", TailBytes: 2, Limit: 100})
+	if tailErr != nil || tail.FromOffset != 4 || len(tail.Chunks) != 1 || tail.Chunks[0].Sequence != 2 || !tail.Chunks[0].Complete || tail.ManifestRevision <= gapped.ManifestRevision || tail.RecoveryEpoch < 1 || tail.AuthorizationVersion < 1 || tail.AsOf.IsZero() || tail.TargetGenerationID == "" {
+		t.Fatalf("bounded tail=%#v,%v", tail, tailErr)
+	}
+	offset := int64(1)
+	firstPage, pageErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", FromOffset: &offset, Limit: 1})
+	if pageErr != nil || len(firstPage.Chunks) != 1 || firstPage.Chunks[0].Sequence != 1 || firstPage.NextAfterSequence == nil || *firstPage.NextAfterSequence != 1 {
+		t.Fatalf("bounded offset page=%#v,%v", firstPage, pageErr)
+	}
+	secondPage, pageErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", AfterSequence: firstPage.NextAfterSequence, Limit: 1})
+	if pageErr != nil || len(secondPage.Chunks) != 1 || secondPage.Chunks[0].Sequence != 2 || secondPage.FromOffset != 3 || secondPage.NextAfterSequence != nil || secondPage.ManifestRevision != tail.ManifestRevision {
+		t.Fatalf("manifest replay changed immutable revision=%#v,%v", secondPage, pageErr)
+	}
+	if _, pageErr = store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", RunNumber: 999, Limit: 1}); !errors.Is(pageErr, domain.ErrNotFound) {
+		t.Fatalf("invented run returned=%v", pageErr)
+	}
+	if _, pageErr = store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stdout", ExecutionID: "ffffffff-ffff-4fff-8fff-ffffffffffff", Limit: 1}); !errors.Is(pageErr, domain.ErrNotFound) {
+		t.Fatalf("wrong pinned execution returned=%v", pageErr)
+	}
 	exitCode := 0
 	completed := integrationEvent(
 		t, identity, assignment.ExecutionID, 2, "process.completed", "",
@@ -1019,13 +1116,39 @@ func testExecutionLifecycle(
 	if replayedEvent, err = store.RecordExecutionEvent(ctx, identity, completed); !errors.Is(err, domain.ErrConflict) || replayedEvent {
 		t.Fatalf("RecordExecutionEvent(completed without stderr) = %t, %v", replayedEvent, err)
 	}
-	commitEmptyTerminalLog(ctx, t, store, identity, assignment.ExecutionID, jobID, "stderr", "d")
+	stderrFirst := firstChunk
+	stderrFirst.Stream = "stderr"
+	stderrFirst.ObjectKey = strings.Replace(firstChunk.ObjectKey, "/stdout/", "/stderr/", 1)
+	stderrFirst.DocumentDigest = "sha256:" + strings.Repeat("d", 64)
+	if _, err = store.CommitLogChunk(ctx, identity, stderrFirst); err != nil {
+		t.Fatal(err)
+	}
+	stderrFinal := stderrFirst
+	stderrFinal.Sequence = 2
+	stderrFinal.ObjectKey = strings.Replace(stderrFirst.ObjectKey, "00000001.chunk", "00000002.chunk", 1)
+	stderrFinal.ByteOffset, stderrFinal.ByteLength, stderrFinal.Complete = 3, 0, true
+	stderrFinal.DocumentDigest = "sha256:" + strings.Repeat("e", 64)
+	if _, err = store.CommitLogChunk(ctx, identity, stderrFinal); err != nil {
+		t.Fatal(err)
+	}
+	endOffset := int64(3)
+	emptyTail, emptyErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stderr", FromOffset: &endOffset, Limit: 1})
+	if emptyErr != nil || emptyTail.State != "complete" || len(emptyTail.Chunks) != 1 || emptyTail.Chunks[0].Sequence != 2 || emptyTail.Chunks[0].ByteLength != 0 || !emptyTail.Chunks[0].Complete {
+		t.Fatalf("zero-byte terminal chunk at EOF lost=%#v,%v", emptyTail, emptyErr)
+	}
 	if replayedEvent, err = store.RecordExecutionEvent(ctx, identity, completed); err != nil || replayedEvent {
 		t.Fatalf("RecordExecutionEvent(completed) = %t, %v", replayedEvent, err)
 	}
 	job, err := store.GetJob(ctx, principal, "research", jobID)
 	if err != nil || job.Phase != "terminal" || job.Outcome != "success" {
 		t.Fatalf("GetJob(completed) = %#v, %v", job, err)
+	}
+	if job.Lifecycle.StartedAt == nil || job.Lifecycle.CompletedAt == nil ||
+		!job.Lifecycle.StartedAt.Equal(started.ObservedAt.Truncate(time.Microsecond)) ||
+		!job.Lifecycle.CompletedAt.Equal(completed.ObservedAt.Truncate(time.Microsecond)) ||
+		job.Lifecycle.StartedProvenance != "process.started" || job.Lifecycle.CompletedProvenance != "process.completed" ||
+		job.CurrentRun == nil || job.CurrentRun.ExecutionID != assignment.ExecutionID {
+		t.Fatalf("observed lifecycle provenance = %#v, run = %#v", job.Lifecycle, job.CurrentRun)
 	}
 }
 
@@ -1072,6 +1195,10 @@ func testAcceptedCancellation(
 	)
 	commitEmptyTerminalLog(ctx, t, store, identity, assignment.ExecutionID, jobID, "stdout", "e")
 	commitEmptyTerminalLog(ctx, t, store, identity, assignment.ExecutionID, jobID, "stderr", "f")
+	emptyTail, emptyErr := store.ListLogChunks(ctx, principal, "research", jobID, domain.LogChunkOptions{Stream: "stderr", TailBytes: 65536, Limit: 1})
+	if emptyErr != nil || emptyTail.State != "complete" || emptyTail.ByteLength != 0 || len(emptyTail.Chunks) != 1 || emptyTail.Chunks[0].ByteLength != 0 || !emptyTail.Chunks[0].Complete {
+		t.Fatalf("empty stream terminal chunk lost=%#v,%v", emptyTail, emptyErr)
+	}
 	if _, err = store.RecordExecutionEvent(ctx, identity, completed); err != nil {
 		t.Fatalf("RecordExecutionEvent(canceled) error = %v", err)
 	}
@@ -1439,5 +1566,40 @@ func assertTableCount(
 	}
 	if count != want {
 		t.Fatalf("%s count = %d, want %d", table, count, want)
+	}
+}
+
+// A pre-upgrade out-of-order chunk may exceed the newer addition bound. Its
+// immutable receipt must still replay, while a new publication is rejected.
+func testLegacyOverflowReplay(ctx context.Context, t *testing.T, store *Store, identity domain.AgentIdentity, template domain.LogChunk) {
+	t.Helper()
+	chunk := template
+	chunk.ByteOffset = math.MaxInt64
+	if replayed, err := store.CommitLogChunk(ctx, identity, chunk); !errors.Is(err, domain.ErrConflict) || replayed {
+		t.Fatalf("new overflow = %v, %v", replayed, err)
+	}
+	_, err := store.pool.Exec(ctx, `INSERT INTO log_streams
+  (namespace_id, execution_id, agent_id, stream, store_name, store_version)
+  VALUES ($1,$2,$3,$4,$5,$6)`, identity.NamespaceID, chunk.ExecutionID, chunk.AgentID, chunk.Stream, chunk.StoreName, chunk.StoreVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.pool.Exec(ctx, `INSERT INTO log_chunks
+  (namespace_id, execution_id, agent_id, stream, sequence, store_name, store_version,
+   object_key, byte_offset, byte_length, checksum, captured_at, complete, truncated, document_digest, document)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb)`,
+		identity.NamespaceID, chunk.ExecutionID, chunk.AgentID, chunk.Stream, chunk.Sequence, chunk.StoreName, chunk.StoreVersion,
+		chunk.ObjectKey, chunk.ByteOffset, chunk.ByteLength, chunk.Checksum, chunk.CapturedAt, chunk.Complete, chunk.Truncated, chunk.DocumentDigest, string(chunk.Document))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed, replayErr := store.CommitLogChunk(ctx, identity, chunk); replayErr != nil || !replayed {
+		t.Fatalf("legacy overflow replay = %v, %v", replayed, replayErr)
+	}
+	if _, err = store.pool.Exec(ctx, `DELETE FROM log_chunks WHERE execution_id=$1 AND stream=$2`, chunk.ExecutionID, chunk.Stream); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.pool.Exec(ctx, `DELETE FROM log_streams WHERE execution_id=$1 AND stream=$2`, chunk.ExecutionID, chunk.Stream); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -51,19 +51,19 @@ Never delete the migration ledger entry to make an old binary start.
 
 ## AD-managed rollout dependency
 
-This slice adds the grant and repository-authorization foundation. Direct AD
-reconciliation, immutable directory aliases, complete-group snapshot checks,
-account eligibility, managed-namespace policy, and directory freshness failure
-handling remain separate implementation work. The schema reserves `directory`
-provenance but public manual endpoints cannot assert it. No production namespace
-is declared AD-managed by this migration.
+The grant foundation is complemented by direct AD reconciliation, immutable
+directory aliases, complete-group snapshot checks, account eligibility,
+managed-namespace policy, and directory freshness failure handling. See
+[directory configuration](DIRECTORY.md) for enabling these controls. Public
+manual endpoints cannot assert `directory` provenance. Applying migrations alone
+does not declare a production namespace AD-managed.
 
 Before enabling directory authority, inventory legacy and manual grants for each
 managed namespace, compare proposed direct AD bindings, and explicitly reconcile
 unapproved manual contributions. An unnoticed legacy grant must not retain access
-after an AD removal. Future directory writes must preserve independent source
-provenance, update the authorization revision, audit additions/removals, and never
-interpret an incomplete query as an empty group.
+after an AD removal. Directory writes preserve independent source provenance, update the
+authorization revision, audit additions/removals, and reject incomplete queries
+rather than interpreting them as empty groups.
 
 `GET /v1/me` reports `authorizationCheckedAt` from its database statement snapshot.
 It is not directory freshness evidence. Its decimal-string revision is useful for

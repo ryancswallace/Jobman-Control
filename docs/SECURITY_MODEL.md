@@ -38,10 +38,12 @@ read a deduplicated current-membership projection, so multiple roles never
 multiply result rows. Owner-dependent cancellation remains a separate resource
 check. See [the capability catalog and migration boundaries](AUTHORIZATION_UPGRADE.md).
 
-The initial grant foundation does not yet reconcile AD groups, verify account
-eligibility, enforce directory freshness, or accept delegated service assertions.
-Those integrations must be completed before an AD-managed Dashboard release.
-A manual grant is not evidence of direct AD membership.
+Directory reconciliation verifies account eligibility and direct AD group
+membership and enforces directory freshness in enforce mode. Certificate-bound
+service assertions are checked against current namespace authorization and
+authorization versions on every delegated read. A manual grant is not evidence
+of direct AD membership. See [directory configuration](DIRECTORY.md)
+for configuration and failure behavior.
 
 ## Boundaries and controls
 

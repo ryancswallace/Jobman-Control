@@ -25,6 +25,12 @@
     "/\\b[0-9a-f]{32,}\\b/g"
   ],
   "words": [
+    "labfixture",
+    "PKIX",
+	"LDAPS",
+	"ntlmssp",
+	"FILETIME",
+	"ERRCODE",
     "hashtextextended",
     "actionlint",
     "addgroup",
@@ -97,6 +103,7 @@
     "govulncheck",
     "healthz",
     "healthcheck",
+    "HMAC",
     "homebrewformula",
     "httpapi",
     "idempotency",
@@ -114,6 +121,7 @@
     "keylessly",
     "koalaman",
     "ldflags",
+    "lpad",
     "lycheeverse",
     "makezero",
     "mapfile",

@@ -12,7 +12,10 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	jobmanprotocol "github.com/ryancswallace/jobman-control/contracts/jobman/v1alpha1"
@@ -28,6 +31,7 @@ const apiVersion = "jobman.control/v1alpha1"
 type Options struct {
 	Repository               domain.ControlRepository
 	Authenticator            auth.Authenticator
+	DelegationAuthenticator  *auth.DelegationAuthenticator
 	MaxRequestBytes          int64
 	ReadinessTimeout         time.Duration
 	EnrollmentLifetime       time.Duration
@@ -40,6 +44,7 @@ type Options struct {
 type api struct {
 	repository               domain.ControlRepository
 	authenticator            auth.Authenticator
+	delegationAuthenticator  *auth.DelegationAuthenticator
 	maxRequestBytes          int64
 	readinessTimeout         time.Duration
 	logger                   *slog.Logger
@@ -76,6 +81,7 @@ func New(options Options) (http.Handler, error) {
 	serverAPI := &api{
 		repository:               options.Repository,
 		authenticator:            options.Authenticator,
+		delegationAuthenticator:  options.DelegationAuthenticator,
 		maxRequestBytes:          options.MaxRequestBytes,
 		readinessTimeout:         options.ReadinessTimeout,
 		logger:                   options.Logger,
@@ -88,10 +94,22 @@ func New(options Options) (http.Handler, error) {
 	mux.HandleFunc("GET /healthz", serverAPI.health)
 	mux.HandleFunc("GET /readyz", serverAPI.ready)
 	mux.HandleFunc("GET /metrics", serverAPI.metrics)
+	mux.HandleFunc("GET /v1/capabilities", serverAPI.capabilities)
+	mux.Handle("GET /v1/namespaces/{namespace}/summary", serverAPI.client(serverAPI.namespaceSummary))
+	mux.Handle("GET /v1/monitoring-events", serverAPI.client(serverAPI.monitoringEvents))
+	mux.Handle("GET /v1/monitoring-events/checkpoint", serverAPI.client(serverAPI.monitoringCheckpoint))
 	mux.Handle("GET /v1/me", serverAPI.client(serverAPI.currentPrincipal))
 	mux.Handle("PUT /v1/namespaces/{namespace}/membership-grants/{grantID}", serverAPI.client(serverAPI.putMembershipGrant))
 	mux.Handle("DELETE /v1/namespaces/{namespace}/membership-grants/{grantID}", serverAPI.client(serverAPI.revokeMembershipGrant))
 	mux.Handle("POST /v1/namespaces/{namespace}/jobs", serverAPI.client(serverAPI.submitJob))
+	mux.Handle("GET /v1/namespaces/{namespace}/collections", serverAPI.client(serverAPI.listCollections))
+	mux.Handle("GET /v1/namespaces/{namespace}/collections/{collectionID}/summary", serverAPI.client(serverAPI.collectionSummary))
+	mux.Handle("GET /v1/namespaces/{namespace}/collections/{collectionID}/items", serverAPI.client(serverAPI.collectionItems))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs", serverAPI.client(serverAPI.listGraphs))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs/{graphID}/summary", serverAPI.client(serverAPI.graphSummary))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs/{graphID}/nodes", serverAPI.client(serverAPI.graphNodes))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs/{graphID}/dependencies", serverAPI.client(serverAPI.graphDependencies))
+	mux.Handle("GET /v1/namespaces/{namespace}/graphs/{graphID}/neighborhood", serverAPI.client(serverAPI.graphNeighborhood))
 	mux.Handle("POST /v1/namespaces/{namespace}/collections", serverAPI.client(serverAPI.submitCollection))
 	mux.Handle("GET /v1/namespaces/{namespace}/collections/{collectionID}", serverAPI.client(serverAPI.getCollection))
 	mux.Handle("POST /v1/namespaces/{namespace}/graphs", serverAPI.client(serverAPI.submitGraph))
@@ -99,7 +117,11 @@ func New(options Options) (http.Handler, error) {
 	mux.Handle("POST /v1/namespaces/{namespace}/graphs/{graphID}/cancel", serverAPI.client(serverAPI.cancelGraph))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs", serverAPI.client(serverAPI.listJobs))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}", serverAPI.client(serverAPI.getJob))
+	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/runs", serverAPI.client(serverAPI.listRuns))
+	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/runs/{runID}", serverAPI.client(serverAPI.getRun))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/logs", serverAPI.client(serverAPI.getJobLogs))
+	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/log-chunks", serverAPI.client(serverAPI.listLogChunks))
+	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/artifact-metadata", serverAPI.client(serverAPI.listArtifactMetadata))
 	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/artifacts", serverAPI.client(serverAPI.getJobArtifacts))
 	mux.Handle("PUT /v1/namespaces/{namespace}/memberships", serverAPI.client(serverAPI.putMembership))
 	mux.Handle("GET /v1/namespaces/{namespace}/policy", serverAPI.client(serverAPI.getNamespacePolicy))
@@ -107,6 +129,10 @@ func New(options Options) (http.Handler, error) {
 	mux.Handle("GET /v1/namespaces/{namespace}/audit", serverAPI.client(serverAPI.exportAudit))
 	mux.Handle("POST /v1/namespaces/{namespace}/history/imports", serverAPI.client(serverAPI.importCompletedHistory))
 	mux.Handle("POST /v1/namespaces/{namespace}/targets", serverAPI.client(serverAPI.createTarget))
+	mux.Handle("GET /v1/namespaces/{namespace}/jobs/{jobID}/diagnostic-snapshot", serverAPI.client(serverAPI.diagnosticSnapshot))
+	mux.Handle("GET /v1/namespaces/{namespace}/target-catalog", serverAPI.client(serverAPI.listTargetCatalog))
+	mux.Handle("GET /v1/namespaces/{namespace}/target-catalog/{targetID}", serverAPI.client(serverAPI.getTargetSnapshot))
+	mux.Handle("GET /v1/namespaces/{namespace}/target-catalog/{targetID}/partitions", serverAPI.client(serverAPI.listTargetPartitions))
 	mux.Handle("GET /v1/namespaces/{namespace}/targets", serverAPI.client(serverAPI.listTargets))
 	mux.Handle("GET /v1/namespaces/{namespace}/targets/{target}", serverAPI.client(serverAPI.getTarget))
 	mux.Handle("POST /v1/namespaces/{namespace}/targets/{target}/generations", serverAPI.client(serverAPI.createTargetGeneration))
@@ -167,6 +193,10 @@ func (service *api) metrics(writer http.ResponseWriter, request *http.Request) {
 		_, _ = fmt.Fprintf(writer, "jobman_control_agents{status=%q} %d\n", status, snapshot.AgentsByStatus[status])
 	}
 	_, _ = fmt.Fprintf(writer, "jobman_control_outbox_unpublished %d\n", snapshot.UnpublishedOutbox)
+	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_backlog %d\n", snapshot.MonitoringBacklog)
+	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_backlog_oldest_seconds %g\n", snapshot.OldestMonitoringBacklogAge.Seconds())
+	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_retained_oldest_seconds %g\n", snapshot.OldestRetainedMonitoringAge.Seconds())
+	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_retention_seconds %g\n", snapshot.MonitoringRetention.Seconds())
 	_, _ = fmt.Fprintf(writer, "jobman_control_executions_stale %d\n", snapshot.StaleExecutions)
 	_, _ = fmt.Fprintf(writer, "jobman_control_oldest_queue_age_seconds %.3f\n", snapshot.OldestQueueAge.Seconds())
 	if snapshot.RecoveryHold {
@@ -190,9 +220,24 @@ func (service *api) client(next clientHandler) http.Handler {
 		if len(values) == 1 {
 			value = values[0]
 		}
-		principal, err := service.authenticator.Authenticate(request.Context(), value)
+		var principal domain.Principal
+		var err error
+		scheme, _, _ := strings.Cut(value, " ")
+		if strings.EqualFold(scheme, auth.DelegationScheme) {
+			if service.delegationAuthenticator == nil {
+				writeUnauthenticated(writer)
+				return
+			}
+			principal, err = service.delegationAuthenticator.Authenticate(request.Context(), value, request.TLS, delegationRouteOperation(request.Pattern))
+		} else {
+			principal, err = service.authenticator.Authenticate(request.Context(), value)
+		}
 		if err != nil {
-			writeUnauthenticated(writer)
+			if errors.Is(err, domain.ErrAuthorizationUnavailable) || errors.Is(err, domain.ErrForbidden) {
+				service.writeRepositoryError(writer, request, "authorize delegated read", err)
+			} else {
+				writeUnauthenticated(writer)
+			}
 			return
 		}
 		next(writer, request, principal)
@@ -543,7 +588,7 @@ func (service *api) listJobs(
 	for _, job := range page.Jobs {
 		items = append(items, newJobResponse(job))
 	}
-	response := jobListResponse{APIVersion: apiVersion, Kind: "JobList", Items: items}
+	response := jobListResponse{APIVersion: apiVersion, Kind: "JobList", Items: items, AsOf: page.AsOf}
 	if page.NextCursor != nil {
 		response.NextPageToken, err = encodeJobPageToken(*page.NextCursor)
 		if err != nil {
@@ -560,19 +605,41 @@ type jobPageToken struct {
 }
 
 func readJobListOptions(request *http.Request) (domain.JobListOptions, error) {
-	query := request.URL.Query()
-	if len(query) > 3 {
+	query, parseErr := url.ParseQuery(request.URL.RawQuery)
+	if parseErr != nil {
+		return domain.JobListOptions{}, errors.New("job query is invalid")
+	}
+	if len(query) > 10 {
 		return domain.JobListOptions{}, errors.New("unsupported query parameter")
 	}
 	for name := range query {
-		if name != "limit" && name != "phase" && name != "pageToken" {
+		if name != "limit" && name != "phase" && name != "pageToken" && name != "outcome" && name != "ownerPrincipalId" && name != "completedFrom" && name != "completedBefore" && name != "createdBefore" && name != "jobId" && name != "confidence" {
 			return domain.JobListOptions{}, errors.New("unsupported query parameter")
 		}
 		if len(query[name]) != 1 {
 			return domain.JobListOptions{}, fmt.Errorf("%s must be specified once", name)
 		}
 	}
-	options := domain.JobListOptions{Limit: domain.DefaultJobListLimit, Phase: query.Get("phase")}
+	options := domain.JobListOptions{Limit: domain.DefaultJobListLimit, Phase: query.Get("phase"), Outcome: query.Get("outcome"), OwnerPrincipalID: query.Get("ownerPrincipalId"), JobID: query.Get("jobId"), Confidence: query.Get("confidence")}
+	if len(options.Outcome) > 64 || (options.OwnerPrincipalID != "" && !domain.IsID(options.OwnerPrincipalID)) || (options.JobID != "" && !domain.IsID(options.JobID)) {
+		return domain.JobListOptions{}, errors.New("job query identity or outcome is invalid")
+	}
+	if options.Confidence != "" && !slices.Contains([]string{"current", "stale", "uncertain", "lost", "attention"}, options.Confidence) {
+		return domain.JobListOptions{}, errors.New("confidence is invalid")
+	}
+	for name, destination := range map[string]**time.Time{"completedFrom": &options.CompletedFrom, "completedBefore": &options.CompletedBefore, "createdBefore": &options.CreatedBefore} {
+		if value, present := query[name]; present {
+			parsed, err := time.Parse(time.RFC3339Nano, value[0])
+			if err != nil {
+				return domain.JobListOptions{}, fmt.Errorf("%s must be an RFC3339 timestamp", name)
+			}
+			parsed = parsed.UTC()
+			*destination = &parsed
+		}
+	}
+	if options.CompletedFrom != nil && options.CompletedBefore != nil && !options.CompletedFrom.Before(*options.CompletedBefore) {
+		return domain.JobListOptions{}, errors.New("completion window is invalid")
+	}
 	if value := query.Get("limit"); value != "" {
 		limit, err := strconv.Atoi(value)
 		if err != nil || limit < 1 || limit > domain.MaximumJobListLimit {
@@ -582,7 +649,7 @@ func readJobListOptions(request *http.Request) (domain.JobListOptions, error) {
 		}
 		options.Limit = limit
 	}
-	if options.Phase != "" && !domain.ValidJobPhase(options.Phase) {
+	if options.Phase != "" && !domain.ValidJobPhaseFilter(options.Phase) {
 		return domain.JobListOptions{}, errors.New("phase is invalid")
 	}
 	if token := query.Get("pageToken"); token != "" {
@@ -956,6 +1023,8 @@ func (service *api) writeRepositoryError(
 	switch {
 	case errors.Is(err, domain.ErrUnauthenticated):
 		writeUnauthenticated(writer)
+	case errors.Is(err, domain.ErrAuthorizationUnavailable):
+		writeError(writer, http.StatusServiceUnavailable, "authorization_unavailable", "current directory authorization cannot be verified")
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(writer, http.StatusForbidden, "forbidden", "principal is not authorized for this namespace")
 	case errors.Is(err, domain.ErrNotFound):
@@ -1006,6 +1075,7 @@ func revisionETag(revision int64) string {
 }
 
 type jobResponse struct {
+	AsOf       time.Time   `json:"asOf"`
 	APIVersion string      `json:"apiVersion"`
 	Kind       string      `json:"kind"`
 	Metadata   jobMetadata `json:"metadata"`
@@ -1014,6 +1084,7 @@ type jobResponse struct {
 }
 
 type jobListResponse struct {
+	AsOf          time.Time     `json:"asOf"`
 	APIVersion    string        `json:"apiVersion"`
 	Kind          string        `json:"kind"`
 	Items         []jobResponse `json:"items"`
@@ -1021,13 +1092,15 @@ type jobListResponse struct {
 }
 
 type jobMetadata struct {
-	ID        string            `json:"id"`
-	Namespace string            `json:"namespace"`
-	Name      string            `json:"name"`
-	Labels    map[string]string `json:"labels,omitempty"`
-	Revision  int64             `json:"revision"`
-	CreatedAt time.Time         `json:"createdAt"`
-	UpdatedAt time.Time         `json:"updatedAt"`
+	NamespaceID string            `json:"namespaceId,omitempty"`
+	Owner       *domain.JobOwner  `json:"owner,omitempty"`
+	ID          string            `json:"id"`
+	Namespace   string            `json:"namespace"`
+	Name        string            `json:"name"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Revision    int64             `json:"revision"`
+	CreatedAt   time.Time         `json:"createdAt"`
+	UpdatedAt   time.Time         `json:"updatedAt"`
 }
 
 type jobSpec struct {
@@ -1044,13 +1117,17 @@ type jobPlacement struct {
 }
 
 type jobStatus struct {
-	Phase                 string              `json:"phase"`
-	DesiredState          string              `json:"desiredState"`
-	Outcome               string              `json:"outcome,omitempty"`
-	ObservationConfidence string              `json:"observationConfidence,omitempty"`
-	ConfidenceUpdatedAt   *time.Time          `json:"confidenceUpdatedAt,omitempty"`
-	NativeID              string              `json:"nativeId,omitempty"`
-	Scheduler             *jobSchedulerStatus `json:"scheduler,omitempty"`
+	Imported              bool                     `json:"imported"`
+	Lifecycle             domain.JobLifecycle      `json:"lifecycle"`
+	CurrentRun            *domain.RunReference     `json:"currentRun,omitempty"`
+	Group                 domain.JobGroupReference `json:"group"`
+	Phase                 string                   `json:"phase"`
+	DesiredState          string                   `json:"desiredState"`
+	Outcome               string                   `json:"outcome,omitempty"`
+	ObservationConfidence string                   `json:"observationConfidence,omitempty"`
+	ConfidenceUpdatedAt   *time.Time               `json:"confidenceUpdatedAt,omitempty"`
+	NativeID              string                   `json:"nativeId,omitempty"`
+	Scheduler             *jobSchedulerStatus      `json:"scheduler,omitempty"`
 }
 
 type jobSchedulerStatus struct {
@@ -1099,9 +1176,10 @@ type collectionStatus struct {
 }
 
 type collectionItem struct {
-	Index int         `json:"index"`
-	Name  string      `json:"name"`
-	Job   jobResponse `json:"job"`
+	ArrayTaskIndex *int        `json:"arrayTaskIndex,omitempty"`
+	Index          int         `json:"index"`
+	Name           string      `json:"name"`
+	Job            jobResponse `json:"job"`
 }
 
 type graphResponse struct {
@@ -1168,9 +1246,11 @@ type apiError struct {
 
 func newJobResponse(job domain.Job) jobResponse {
 	response := jobResponse{
+		AsOf:       job.AsOf,
 		APIVersion: apiVersion,
 		Kind:       "Job",
 		Metadata: jobMetadata{
+			NamespaceID: job.NamespaceID, Owner: job.Owner,
 			ID:        job.ID,
 			Namespace: job.Namespace,
 			Name:      job.Name,
@@ -1188,6 +1268,7 @@ func newJobResponse(job domain.Job) jobResponse {
 			},
 		},
 		Status: jobStatus{
+			Imported: job.Imported, Lifecycle: job.Lifecycle, CurrentRun: job.CurrentRun, Group: job.Group,
 			Phase: job.Phase, DesiredState: job.DesiredState,
 			Outcome: job.Outcome, ObservationConfidence: job.ObservationConfidence,
 			NativeID: job.NativeID,

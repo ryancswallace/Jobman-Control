@@ -20,6 +20,7 @@ type currentPrincipalResponse struct {
 }
 
 type principalIdentity struct {
+	DirectoryID string `json:"directoryId,omitempty"`
 	ID          string `json:"id,omitempty"`
 	Issuer      string `json:"issuer"`
 	Subject     string `json:"subject"`
@@ -61,7 +62,7 @@ func (service *api) currentPrincipal(writer http.ResponseWriter, request *http.R
 		service.writeRepositoryError(writer, request, "discover current principal", err)
 		return
 	}
-	response := currentPrincipalResponse{APIVersion: apiVersion, Kind: "CurrentPrincipal", Principal: principalIdentity{ID: access.PrincipalID, Issuer: access.Principal.Issuer, Subject: access.Principal.Subject, DisplayName: access.DisplayName}, AuthorizationCheckedAt: access.AuthorizationCheckedAt, Namespaces: access.Namespaces}
+	response := currentPrincipalResponse{APIVersion: apiVersion, Kind: "CurrentPrincipal", Principal: principalIdentity{DirectoryID: access.DirectoryID, ID: access.PrincipalID, Issuer: access.Principal.Issuer, Subject: access.Principal.Subject, DisplayName: access.DisplayName}, AuthorizationCheckedAt: access.AuthorizationCheckedAt, Namespaces: access.Namespaces}
 	if response.Namespaces == nil {
 		response.Namespaces = []domain.NamespaceAccess{}
 	}

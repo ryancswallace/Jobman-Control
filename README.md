@@ -31,12 +31,17 @@ submit work, enforce policy, and track results.
 | Capability | Jobman Control provides... |
 | --- | --- |
 | Shared state | PostgreSQL-backed jobs, runs, assignments, target generations, policy, and audit history |
+| Monitoring | Instance discovery, complete namespace summaries, filtered job pages, original owners, runs, and lifecycle provenance |
+| Delegation | [Pinned read-only service assertions](docs/DELEGATION.md), verified directory aliases, replay protection, and repository scope checks |
+| Group monitoring | [Bounded catalogs, array children, graph predicates, and neighborhoods](docs/GROUP_MONITORING.md) with complete source counts |
 | Placement | Named hosts, on-premises Slurm partitions, and AWS ParallelCluster target records |
 | Admission | Portable workload validation against target, runtime, platform, resource, log, and artifact capabilities |
 | Coordination | Idempotent submission, namespace quotas, fair dispatch, cancellation, collections, Slurm arrays, and dependency graphs |
 | Agent trust | One-time enrollment, mTLS certificates, rotating sessions, generation pinning, and replay-safe assignment acceptance |
 | Identity | OIDC users, bounded namespace discovery, contributing role grants, and exact capability unions |
+| Directory authority | [Verified direct AD membership](docs/DIRECTORY.md), approved alias mapping, atomic revocation, and freshness enforcement |
 | Results | Ordered execution events plus checksummed log and artifact manifests for local filesystems, NFS, and S3 |
+| Bounded metadata | [Indexed log tails and artifact pages](docs/MANIFESTS.md) with immutable run/store bindings and current authorization proof |
 | Operations | Readiness, bounded Prometheus metrics, audit export, retention policy, restore holds, and completed-history import |
 
 ## How it fits
@@ -220,3 +225,20 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
 [release guide]: RELEASE.md
 [security model]: docs/SECURITY_MODEL.md
 [security policy]: SECURITY.md
+
+A separate [synthetic Dashboard Lab helper](devel/labfixture/README.md) exercises
+real delegated reads and directory reconciliation without changing existing Lab services.
+
+[Bounded target monitoring](docs/TARGET_CATALOG.md) provides complete target counts,
+stable cursors and source authorization snapshots.
+
+[Shared diagnostic snapshots](docs/DIAGNOSTIC_SNAPSHOTS.md) expose bounded factual
+metadata with verified source identity for the public core evidence collector.
+
+Durable terminal-event ingestion for independently registered Dashboard services is
+available through [monitoring checkpoints and events](docs/MONITORING_EVENTS.md),
+with ordered transactional publication, authenticated source/scope cursors, and
+explicit retention/recovery gaps.
+
+[Run monitoring](docs/RUN_MONITORING.md) exposes bounded run references for
+historical logs, artifacts and evidence without an event timeline.

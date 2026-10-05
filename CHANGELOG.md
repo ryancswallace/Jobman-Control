@@ -5,7 +5,63 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Fixed
+
+- Advance authorization versions when a directory binding changes retained
+  permissions, and fence target pagination against late-committing creations.
+- Timestamp monitoring checkpoints at snapshot acquisition and terminal events
+  after row-lock waits. Migration 22 preserves existing rows and event identities.
+
+- Preserve immutable log-chunk replays across the manifest overflow validation
+  upgrade while continuing to reject new overflowing publications.
+- Bound delegation-key startup registration, document unavailable delegated
+  authority responses, and reject synthetic fixture/log roots that overlap
+  through either direct paths or symbolic-link ancestors.
+
 ### Added
+
+- Bounded authorized run catalogs and run detail for historical log, artifact and
+  evidence selection, with exact run identity and current source authority.
+
+- Add service-only durable terminal-event checkpoints and bounded feeds, ordered
+  transactional outbox publication, explicit restore/scope/retention gaps,
+  authenticated source/scope/position cursors, independent 30-day default
+  retention, and operational backlog metrics.
+
+- Add source-pinned, authorized transactional shared diagnostic snapshots with
+  real run/execution identity, bounded lifecycle/dependency facts and opaque log
+  references. Public core evidence integration uses an immutable development pin.
+
+- Add indexed bounded target catalogs and immutable UUID details with complete
+  counts, stable creation cutoffs, decimal generation/store versions and current
+  authorization snapshots, preserving legacy target routes. Large partition sets
+  have explicit preview counts and generation-pinned traversal.
+
+- Add an isolated synthetic Dashboard Lab source helper using normal Control
+  admission, delegation and authenticated directory reconciliation, with private
+  per-service material and bounded log/group acceptance fixtures.
+
+- Bounded indexed log tail/offset metadata and artifact pages with actual
+  run/execution/generation identity, persisted manifest revisions, exact decimal
+  offsets, zero-byte terminal chunks, and current authorization snapshot fields.
+
+- Authenticated LDAPS reconciliation of direct AD group contributions, approved
+  preserved-principal aliases, versioned configuration preview/transition,
+  complete range validation, atomic revocation/audit, and recovery fencing.
+
+- Certificate-bound, pinned read-only service delegation with replay/audit
+  records, approved directory alias binding, managed-namespace freshness checks,
+  and repository-level mutation denial. Job envelopes expose actual read times.
+
+- Bounded collection/graph catalogs, summary and child pages, Slurm array task
+  indices, source dependency counts, and one-hop graph neighborhoods with exact
+  omission counts; legacy complete group documents remain available.
+
+- Stable Control instance discovery with recovery epoch and service time;
+  complete authorized namespace summaries; richer job owner, run, group, and
+  lifecycle metadata; bounded phase, outcome, owner, confidence, and time filters.
+- Lifecycle timestamps from retained/current source observations or explicit
+  Control terminal decisions, with recording-time and provenance distinctions.
 
 - Current-principal discovery with immutable namespace IDs, contributing roles,
   exact capability unions, authorization revisions, and bounded pagination.

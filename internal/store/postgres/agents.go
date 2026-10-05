@@ -45,7 +45,14 @@ func (store *Store) CreateEnrollmentToken(
 		if authorizeErr != nil {
 			return domain.EnrollmentToken{}, authorizeErr
 		}
-		if !authorization.permits(domain.CapabilityEnrollmentCreateAny) && request.Principal != actor {
+		recipient, recipientErr := authorizeNamespace(ctx, tx, request.Principal, namespace, domain.CapabilityNamespaceRead)
+		if recipientErr != nil {
+			if errors.Is(recipientErr, domain.ErrForbidden) {
+				return domain.EnrollmentToken{}, domain.ErrNotFound
+			}
+			return domain.EnrollmentToken{}, recipientErr
+		}
+		if !authorization.permits(domain.CapabilityEnrollmentCreateAny) && recipient.principalID != authorization.principalID {
 			return domain.EnrollmentToken{}, domain.ErrForbidden
 		}
 		resourceID, replayed, reserveErr := reserveIdempotency(
@@ -78,19 +85,7 @@ func (store *Store) CreateEnrollmentToken(
 		if state != "active" {
 			return domain.EnrollmentToken{}, domain.ErrConflict
 		}
-		var enrolledPrincipalID string
-		if queryErr := tx.QueryRow(ctx, `
-			SELECT p.id::text
-			FROM principals AS p
-			JOIN authorized_memberships AS m ON m.principal_id = p.id
-			WHERE m.namespace_id = $1 AND p.issuer = $2 AND p.subject = $3
-		`, authorization.namespaceID, request.Principal.Issuer, request.Principal.Subject).
-			Scan(&enrolledPrincipalID); queryErr != nil {
-			if errors.Is(queryErr, pgx.ErrNoRows) {
-				return domain.EnrollmentToken{}, domain.ErrNotFound
-			}
-			return domain.EnrollmentToken{}, fmt.Errorf("resolve enrollment principal: %w", queryErr)
-		}
+		enrolledPrincipalID := recipient.principalID
 		clearToken := store.deriveToken("jme", enrollmentID)
 		var expiresAt time.Time
 		if queryErr := tx.QueryRow(ctx, `

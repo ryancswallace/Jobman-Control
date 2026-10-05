@@ -382,13 +382,17 @@ type AuditPage struct {
 
 // OperationalSnapshot contains bounded-cardinality service metrics.
 type OperationalSnapshot struct {
-	JobsByPhase       map[string]int64
-	AgentsByStatus    map[string]int64
-	UnpublishedOutbox int64
-	StaleExecutions   int64
-	OldestQueueAge    time.Duration
-	RecoveryHold      bool
-	RestoreEpoch      int64
+	JobsByPhase                 map[string]int64
+	AgentsByStatus              map[string]int64
+	UnpublishedOutbox           int64
+	MonitoringBacklog           int64
+	OldestMonitoringBacklogAge  time.Duration
+	OldestRetainedMonitoringAge time.Duration
+	MonitoringRetention         time.Duration
+	StaleExecutions             int64
+	OldestQueueAge              time.Duration
+	RecoveryHold                bool
+	RestoreEpoch                int64
 }
 
 // RecoveryState controls conservative assignment after a database restore.
@@ -402,6 +406,16 @@ type RecoveryState struct {
 // ControlRepository is the complete persistence boundary used by this slice.
 type ControlRepository interface {
 	JobRepository
+	ListCollections(context.Context, Principal, string, GroupListOptions) (ResourcePage[Collection], error)
+	CollectionSummary(context.Context, Principal, string, string) (CollectionSnapshot, error)
+	ListCollectionItems(context.Context, Principal, string, string, int, int) (ResourcePage[CollectionItem], error)
+	ListGraphs(context.Context, Principal, string, GroupListOptions) (ResourcePage[Graph], error)
+	GraphSummary(context.Context, Principal, string, string) (GraphSnapshot, error)
+	ListGraphNodes(context.Context, Principal, string, string, int, int) (ResourcePage[GraphNodeSnapshot], error)
+	ListGraphEdges(context.Context, Principal, string, string, GraphEdgeOptions) (GraphEdgePage, error)
+	GraphNeighborhood(context.Context, Principal, string, string, string, int, int) (GraphNeighborhood, error)
+	Capabilities(context.Context) (ControlCapabilities, error)
+	NamespaceSummary(context.Context, Principal, string, *time.Time, *time.Time) (NamespaceSummary, error)
 	CurrentPrincipal(context.Context, Principal, string, int) (PrincipalAccess, error)
 	PutMembershipGrant(context.Context, Principal, string, string, MembershipGrant) (ContributingGrant, error)
 	RevokeMembershipGrant(context.Context, Principal, string, string) (ContributingGrant, error)

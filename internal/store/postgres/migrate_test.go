@@ -11,7 +11,7 @@ func TestLoadMigrationsIsOrderedAndChecksummed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations() error = %v", err)
 	}
-	if len(migrations) != 13 || migrations[0].version != "000001_control_foundation.sql" ||
+	if len(migrations) != 22 || migrations[0].version != "000001_control_foundation.sql" ||
 		migrations[1].version != "000002_targets_agents_assignments.sql" ||
 		migrations[2].version != "000003_agent_execution.sql" ||
 		migrations[3].version != "000004_shared_logs.sql" ||
@@ -23,7 +23,14 @@ func TestLoadMigrationsIsOrderedAndChecksummed(t *testing.T) {
 		migrations[9].version != "000010_dependency_graphs.sql" ||
 		migrations[10].version != "000011_production_controls.sql" ||
 		migrations[11].version != "000012_completed_history_import.sql" ||
-		migrations[12].version != "000013_membership_grants.sql" {
+		migrations[12].version != "000013_membership_grants.sql" ||
+		migrations[13].version != "000014_monitoring_snapshots.sql" ||
+		migrations[14].version != "000015_group_catalogs.sql" ||
+		migrations[15].version != "000016_delegated_authority.sql" ||
+		migrations[16].version != "000017_directory_reconciliation.sql" ||
+		migrations[17].version != "000018_bounded_manifests.sql" ||
+		migrations[18].version != "000019_target_catalog.sql" ||
+		migrations[19].version != "000020_diagnostic_snapshots.sql" || migrations[20].version != "000021_monitoring_events.sql" || migrations[21].version != "000022_monitoring_visibility_fences.sql" {
 		t.Fatalf("loadMigrations() returned unexpected migration sequence (length %d)", len(migrations))
 	}
 	for _, item := range migrations {

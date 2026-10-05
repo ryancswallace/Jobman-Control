@@ -4,16 +4,20 @@ package app
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ryancswallace/jobman-control/internal/agentca"
 	"github.com/ryancswallace/jobman-control/internal/auth"
 	"github.com/ryancswallace/jobman-control/internal/config"
+	"github.com/ryancswallace/jobman-control/internal/directory"
 	"github.com/ryancswallace/jobman-control/internal/domain"
 	"github.com/ryancswallace/jobman-control/internal/httpapi"
 	"github.com/ryancswallace/jobman-control/internal/store/postgres"
@@ -46,6 +50,35 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		return fmt.Errorf("verify database migrations: %w", err)
 	}
 	store := postgres.New(pool, configuration.AgentTokenKey)
+	if diagnosticErr := store.EnableDiagnosticSnapshots(configuration.DiagnosticDeploymentID); diagnosticErr != nil {
+		return diagnosticErr
+	}
+	var directoryConfig *directory.Config
+	if configuration.DirectoryConfigFile != "" {
+		loaded, loadErr := directory.Load(configuration.DirectoryConfigFile)
+		if loadErr != nil {
+			return loadErr
+		}
+		plan, planErr := store.PlanDirectory(startupContext, loaded.Mapping)
+		if planErr != nil {
+			return fmt.Errorf("validate directory transition: %w", planErr)
+		}
+		logger.InfoContext(ctx, "Directory configuration plan", "source-id", plan.SourceID, "revision", plan.Revision, "namespaces", plan.NamespaceCount, "new-managed-namespaces", plan.NewManagedNamespaces, "retained-non-directory-grants", plan.RetainedNonDirectoryGrants, "identities", plan.IdentityCount, "bindings", plan.BindingCount)
+		if configuration.DirectoryMode == "preview" {
+			return nil
+		}
+		if err = store.ConfigureDirectory(startupContext, loaded.Mapping); err != nil {
+			return fmt.Errorf("configure directory authority: %w", err)
+		}
+		directoryConfig = &loaded
+	}
+	retention := configuration.MonitoringFeedRetention
+	if retention == 0 {
+		retention = 30 * 24 * time.Hour
+	}
+	if retentionErr := store.ConfigureMonitoringRetention(startupContext, retention); retentionErr != nil {
+		return retentionErr
+	}
 	var certificateAuthority *agentca.Authority
 	if configuration.AgentCACertificateFile != "" {
 		certificateAuthority, err = agentca.Load(
@@ -60,9 +93,29 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		return err
 	}
 
+	var delegationAuthenticator *auth.DelegationAuthenticator
+	var delegationCA []byte
+	if configuration.DelegationRegistryFile != "" {
+		keys, loadErr := auth.LoadDelegationKeys(configuration.DelegationRegistryFile)
+		if loadErr != nil {
+			return loadErr
+		}
+		delegationCA, err = readDelegationCA(configuration.DelegationClientCAFile)
+		if err != nil {
+			return err
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(delegationCA) {
+			return errors.New("delegation client CA contains no certificates")
+		}
+		if registerErr := store.RegisterDelegationKeys(startupContext, keys); registerErr != nil {
+			return fmt.Errorf("apply delegation service registry: %w", registerErr)
+		}
+		delegationAuthenticator = &auth.DelegationAuthenticator{Registry: store}
+	}
 	handler, err := httpapi.New(httpapi.Options{
 		Repository:               store,
 		Authenticator:            clientAuthenticator,
+		DelegationAuthenticator:  delegationAuthenticator,
 		MaxRequestBytes:          configuration.MaxRequestBytes,
 		ReadinessTimeout:         configuration.ReadinessTimeout,
 		EnrollmentLifetime:       configuration.EnrollmentLifetime,
@@ -85,6 +138,16 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		tlsConfiguration.ClientAuth = tls.VerifyClientCertIfGiven
 		tlsConfiguration.ClientCAs = certificateAuthority.CertificatePool()
 	}
+	if len(delegationCA) > 0 {
+		if tlsConfiguration.ClientCAs == nil {
+			tlsConfiguration.ClientCAs = x509.NewCertPool()
+		}
+		if !tlsConfiguration.ClientCAs.AppendCertsFromPEM(delegationCA) {
+			return errors.New("delegation client CA contains no certificates")
+		}
+		tlsConfiguration.ClientAuth = tls.VerifyClientCertIfGiven
+	}
+
 	server := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: configuration.ReadHeaderTimeout,
@@ -105,8 +168,12 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		serveErrors <- server.Serve(listener)
 	}()
 	go runCoordinator(
-		ctx, logger, store, configuration.CoordinatorInterval, configuration.AgentStaleAfter,
+		ctx, logger, store, configuration.CoordinatorInterval, configuration.AgentStaleAfter, configuration.DelegationAuditRetention,
 	)
+	go runMonitoringPublisher(ctx, logger, store, time.Second)
+	if directoryConfig != nil {
+		go runDirectory(ctx, logger, store, *directoryConfig)
+	}
 	logger.InfoContext(
 		ctx, "Jobman Control API is listening",
 		"address", listener.Addr().String(), "auth-mode", configuration.AuthMode,
@@ -192,6 +259,8 @@ type assignmentReconciler interface {
 	ReconcileAssignments(context.Context, int) (int, error)
 	ReconcileStaleExecutions(context.Context, time.Duration, int) (int, error)
 	PruneOperationalData(context.Context, int) (int, error)
+	PruneDelegationAudits(context.Context, int, time.Duration) (int, error)
+	PruneDirectoryAudits(context.Context, int, time.Duration) (int, error)
 }
 
 func runCoordinator(
@@ -200,6 +269,7 @@ func runCoordinator(
 	reconciler assignmentReconciler,
 	interval time.Duration,
 	staleAfter time.Duration,
+	auditRetention time.Duration,
 ) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -225,6 +295,12 @@ func runCoordinator(
 		if pruned > 0 {
 			logger.InfoContext(ctx, "expired operational records pruned", "count", pruned)
 		}
+		if _, auditErr := reconciler.PruneDelegationAudits(ctx, 256, auditRetention); auditErr != nil && !errors.Is(auditErr, context.Canceled) {
+			logger.ErrorContext(ctx, "delegation audit retention failed")
+		}
+		if _, auditErr := reconciler.PruneDirectoryAudits(ctx, 256, auditRetention); auditErr != nil && !errors.Is(auditErr, context.Canceled) {
+			logger.ErrorContext(ctx, "directory audit retention failed")
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -239,4 +315,17 @@ func wrapCloseError(err error) error {
 	}
 
 	return fmt.Errorf("force close HTTP API: %w", err)
+}
+
+func readDelegationCA(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, errors.New("cannot open delegation client CA")
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 1024*1024+1))
+	if err != nil || len(data) > 1024*1024 {
+		return nil, errors.New("delegation client CA is unreadable or too large")
+	}
+	return data, nil
 }

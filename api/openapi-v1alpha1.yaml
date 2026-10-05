@@ -48,8 +48,96 @@ paths:
             text/plain:
               schema: {type: string}
         "503": {$ref: "#/components/responses/ServerError"}
+  /v1/capabilities:
+    get:
+      operationId: getControlCapabilities
+      security: []
+      description: Non-sensitive instance identity, recovery epoch, service time, implemented features, and limits.
+      responses:
+        "200":
+          description: Current source capabilities.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ControlCapabilities"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /v1/monitoring-events/checkpoint:
+    get:
+      operationId: getMonitoringCheckpoint
+      security:
+        - serviceEvents: []
+          serviceMutualTLS: []
+      description: >-
+        Service-only source-clock activation boundary and committed feed head for
+        the exact assertion namespace set. OIDC users and actor assertions are
+        rejected. No query parameters are accepted.
+      responses:
+        "200": {description: Authorized service checkpoint., content: {application/json: {schema: {$ref: "#/components/schemas/MonitoringCheckpoint"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/monitoring-events:
+    get:
+      operationId: listMonitoringEvents
+      security:
+        - serviceEvents: []
+          serviceMutualTLS: []
+      description: >-
+        Bounded durable terminal transitions for independently registered service
+        authority. A next cursor can advance through events outside the whitelist
+        without returning their payloads. Requires explicit recovery on retention,
+        source instance/epoch, or exact namespace-scope changes. Never silently resets.
+        Cursors are authenticated with a purpose-separated persistent service key.
+        Invalid signatures, including after key rotation, return 400 invalid_request
+        and require explicit consumer reconciliation and a new checkpoint.
+      parameters:
+        - {name: cursor, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 1024}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        "200": {description: Ordered event page and source checkpoint., content: {application/json: {schema: {$ref: "#/components/schemas/MonitoringEventList"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {description: "event_cursor_expired, source_recovery_changed, or event_cursor_scope_changed; explicitly reconcile and establish a new checkpoint.", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/summary:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getNamespaceSummary
+      description: >-
+        Complete authorized counts at one database snapshot. Phase, active, awaiting,
+        and attention counts cover all retained jobs. Outcome counts cover the
+        half-open completion window; omitted map keys mean zero. Defaults to the
+        preceding 24 hours when both timestamps are absent. Supply both or neither.
+      parameters:
+        - name: completedFrom
+          in: query
+          schema: {type: string, format: date-time}
+        - name: completedBefore
+          in: query
+          schema: {type: string, format: date-time}
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized complete summary.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NamespaceSummary"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /v1/me:
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getCurrentPrincipal
       description: >-
         Discover only the authenticated principal's currently authorized namespaces.
@@ -63,6 +151,7 @@ paths:
           in: query
           schema: {type: string, maxLength: 48}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Current principal and one authorized namespace page.
           content:
@@ -202,6 +291,87 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/ClientError"}
         "409": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/diagnostic-snapshot:
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getDiagnosticSnapshot
+      description: Bounded factual metadata from one authorized transaction. Requires configured immutable deployment identity; no byte collection.
+      parameters:
+        - {$ref: "#/components/parameters/Namespace"}
+        - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: deploymentId, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: controlInstanceId, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: namespaceId, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: expectedJobRevision, in: query, schema: {type: string, pattern: "^[1-9][0-9]*$"}, description: Exact expected positive bigint revision; mismatch returns conflict.}
+        - {name: runId, in: query, schema: {type: string, format: uuid}, description: Exact actual run UUID. Default selects latest 32 real runs with an explicit truncation omission.}
+      responses:
+        "200": {description: Source-pinned public core snapshot plus current authority., content: {application/json: {schema: {$ref: "#/components/schemas/DiagnosticSnapshot"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "501": {$ref: "#/components/responses/ServerError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/target-catalog:
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: listTargetCatalog
+      parameters:
+        - {$ref: "#/components/parameters/Namespace"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+        - {name: createdBefore, in: query, schema: {type: string, format: date-time}, description: Inclusive creation cutoff retained inside the cursor.}
+        - {name: pageToken, in: query, schema: {type: string, maxLength: 1024}}
+      responses:
+        "200": {description: Complete counts and bounded target configuration with current authorization., content: {application/json: {schema: {$ref: "#/components/schemas/TargetCatalog"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/target-catalog/{targetId}:
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getTargetSnapshot
+      parameters:
+        - {$ref: "#/components/parameters/Namespace"}
+        - {name: targetId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: One target resolved by UUID inside its current authorized namespace., content: {application/json: {schema: {$ref: "#/components/schemas/TargetSnapshot"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/target-catalog/{targetId}/partitions:
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: listTargetPartitions
+      parameters:
+        - {$ref: "#/components/parameters/Namespace"}
+        - {name: targetId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: generationId, in: query, schema: {type: string, format: uuid}, description: Required on the first page; a continuation token preserves it. Must remain the current generation.}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+        - {name: pageToken, in: query, schema: {type: string, maxLength: 1024}}
+      responses:
+        "200": {description: Complete partition count and bounded generation-pinned page., content: {application/json: {schema: {$ref: "#/components/schemas/TargetPartitionList"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/targets:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
@@ -231,8 +401,13 @@ paths:
         "403": {$ref: "#/components/responses/ClientError"}
         "409": {$ref: "#/components/responses/ClientError"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: listTargets
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Up to 1,000 name-ordered targets.
           content:
@@ -252,8 +427,13 @@ paths:
       - {$ref: "#/components/parameters/Namespace"}
       - {$ref: "#/components/parameters/TargetName"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getTarget
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Target and current immutable generation.
           content:
@@ -363,6 +543,10 @@ paths:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: listJobs
       description: Return one stable newest-first page of authorized namespace jobs.
       parameters:
@@ -371,11 +555,36 @@ paths:
           schema: {type: integer, minimum: 1, maximum: 200, default: 50}
         - name: phase
           in: query
-          schema: {enum: [accepted, assigning, accepted_execution, running, terminal]}
+          schema: {enum: [accepted, assigning, accepted_execution, running, terminal, active, awaiting]}
         - name: pageToken
           in: query
           schema: {type: string, minLength: 1, maxLength: 1024}
+        - name: outcome
+          in: query
+          schema: {type: string, maxLength: 64}
+        - name: ownerPrincipalId
+          in: query
+          description: Verified original submitter, excluding unknown owners of imported history.
+          schema: {type: string, format: uuid}
+        - name: jobId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: confidence
+          in: query
+          description: Attention selects nonterminal stale, uncertain, or lost evidence.
+          schema: {enum: [current, stale, uncertain, lost, attention]}
+        - name: completedFrom
+          in: query
+          schema: {type: string, format: date-time}
+        - name: completedBefore
+          in: query
+          schema: {type: string, format: date-time}
+        - name: createdBefore
+          in: query
+          description: Inclusive stable creation cutoff, separate from the keyset cursor.
+          schema: {type: string, format: date-time}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized page of shared jobs.
           content:
@@ -415,6 +624,39 @@ paths:
   /v1/namespaces/{namespace}/collections:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: listCollectionSummaries
+      description: >-
+        Complete group summaries without child jobs, ordered by descending creation time and UUID. Total covers the creation cutoff and array mode, ignoring the page cursor. Keep filters unchanged between pages.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: pageToken
+          in: query
+          schema: {type: string, maxLength: 1024}
+        - name: createdBefore
+          in: query
+          schema: {type: string, format: date-time}
+        - name: arrayMode
+          in: query
+          schema: {enum: [individual, slurm-array]}
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized bounded source snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CollectionList"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
     post:
       operationId: submitCollection
       description: >-
@@ -453,9 +695,14 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getCollection
       description: Return the aggregate collection state and ordered child job snapshots.
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Current authorized collection snapshot.
           content:
@@ -468,6 +715,36 @@ paths:
   /v1/namespaces/{namespace}/graphs:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: listGraphSummaries
+      description: >-
+        Complete group summaries without child jobs, ordered by descending creation time and UUID. Total covers the creation cutoff and array mode, ignoring the page cursor. Keep filters unchanged between pages.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: pageToken
+          in: query
+          schema: {type: string, maxLength: 1024}
+        - name: createdBefore
+          in: query
+          schema: {type: string, format: date-time}
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized bounded source snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphList"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
     post:
       operationId: submitGraph
       description: >-
@@ -506,8 +783,13 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getGraph
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Aggregate graph state, ordered nodes, and dependency satisfaction.
           content:
@@ -517,6 +799,206 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/ClientError"}
         "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/collections/{collectionId}/summary:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: collectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getCollectionSummary
+      description: >-
+        Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized bounded source snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CollectionSummary"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/collections/{collectionId}/items:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: collectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getCollectionItemList
+      description: >-
+        Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: afterIndex
+          in: query
+          schema: {type: integer, minimum: -1, maximum: 9999, default: -1}
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized bounded source snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CollectionItemList"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/graphs/{graphId}/summary:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: graphId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getGraphSummary
+      description: >-
+        Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized bounded source snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphSummary"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/graphs/{graphId}/nodes:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: graphId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getGraphNodeList
+      description: >-
+        Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: afterIndex
+          in: query
+          schema: {type: integer, minimum: -1, maximum: 9999, default: -1}
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized bounded source snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphNodeList"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/graphs/{graphId}/dependencies:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: graphId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getGraphDependencyList
+      description: >-
+        Source predicates in ascending upstream/downstream job UUID order. Optional nodeId selects incident edges; direction requires nodeId. Total ignores the page cursor. Keep filters unchanged between pages.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: nodeId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: direction
+          in: query
+          schema: {enum: [incoming, outgoing]}
+        - name: pageToken
+          in: query
+          schema: {type: string, maxLength: 256}
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized bounded source snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphDependencyList"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/graphs/{graphId}/neighborhood:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - name: graphId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      operationId: getGraphNeighborhood
+      description: >-
+        Required nodeId selects a one-hop induced neighborhood. Center is always included; remaining nodes use immutable index order. Edges only connect returned nodes. Exact totals and omissions cover the complete neighborhood.
+      parameters:
+        - name: nodeId
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: maxNodes
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: maxEdges
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+      responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
+        "200":
+          description: Authorized bounded source snapshot.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphNeighborhood"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/graphs/{graphId}/cancel:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
@@ -591,8 +1073,13 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getJob
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Current authorized job snapshot.
           content:
@@ -601,6 +1088,103 @@ paths:
         "400": {$ref: "#/components/responses/ClientError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/ClientError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/runs:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listRuns
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      description: >-
+        Factual run references, newest run number first. Requires jobs.read in the
+        repository transaction. A ten-minute continuation binds principal, source
+        instance, recovery epoch, authorization version, job and initial run ceiling.
+        No commands, workload specifications, event timeline or storage paths.
+      parameters:
+        - {name: pageToken, in: query, schema: {type: string, minLength: 1, maxLength: 1024}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        "200": {description: Current facts for runs at or below the initial run-number ceiling; an unassigned or imported job may have no runs., content: {application/json: {schema: {$ref: "#/components/schemas/RunList"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/runs/{runId}:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getRun
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      description: Read one actual run belonging to this job with current jobs.read authorization. No query parameters.
+      responses:
+        "200": {description: Current run facts, content: {application/json: {schema: {$ref: "#/components/schemas/RunDetail"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/log-chunks:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listLogChunks
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      description: >-
+        Read bounded immutable metadata from one actual execution stream, authorized
+        in the same snapshot. Range selectors are mutually exclusive; omitted range
+        defaults to the last 65536 bytes. Only the contiguous published prefix is exposed.
+      parameters:
+        - {name: runNumber, in: query, schema: {type: string, pattern: "^[1-9][0-9]*$"}, description: Select this actual run; omission selects latest.}
+        - {name: executionId, in: query, schema: {type: string, format: uuid}, description: Pin and verify the selected execution.}
+        - {name: stream, in: query, schema: {enum: [stdout, stderr], default: stdout}}
+        - {name: tailBytes, in: query, schema: {type: integer, minimum: 1, maximum: 262144}}
+        - {name: fromOffset, in: query, schema: {$ref: "#/components/schemas/DecimalCount"}}
+        - {name: afterSequence, in: query, schema: {$ref: "#/components/schemas/DecimalCount"}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 100}}
+      responses:
+        "200": {description: Bounded manifest with current authority and actual source identity., content: {application/json: {schema: {$ref: "#/components/schemas/LogChunkList"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
+  /v1/namespaces/{namespace}/jobs/{jobId}/artifact-metadata:
+    parameters:
+      - {$ref: "#/components/parameters/Namespace"}
+      - {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listArtifactMetadata
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
+      description: Full filtered count and bounded immutable artifact metadata; never artifact bytes.
+      parameters:
+        - {name: runNumber, in: query, schema: {type: string, pattern: "^[1-9][0-9]*$"}}
+        - {name: pageToken, in: query, schema: {type: string, maxLength: 256}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 100}}
+      responses:
+        "200": {description: Current artifact metadata; encoded items are capped at 2 MiB, with a continuation token when the byte budget is reached., content: {application/json: {schema: {$ref: "#/components/schemas/ArtifactList"}}}}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "404": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ServerError"}
   /v1/namespaces/{namespace}/jobs/{jobId}/logs:
     parameters:
       - {$ref: "#/components/parameters/Namespace"}
@@ -609,11 +1193,16 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getJobLogs
       description: >-
         Return authorized logical log metadata. Bytes remain in the target-approved
         filesystem artifact store and physical mount paths are never returned.
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Current immutable log chunks and stream completeness.
           content:
@@ -630,12 +1219,17 @@ paths:
         required: true
         schema: {type: string, format: uuid}
     get:
+      security:
+        - oidcBearer: []
+        - delegatedRead: []
+          serviceMutualTLS: []
       operationId: getJobArtifacts
       description: >-
         Return authorized immutable output metadata. Bytes remain in the
         target-approved artifact store and physical mount paths are never
         returned.
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Immutable output artifacts published by job executions.
           content:
@@ -921,6 +1515,22 @@ paths:
         "409": {$ref: "#/components/responses/ClientError"}
 components:
   securitySchemes:
+    serviceEvents:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: >-
+        Jobman-Delegation Ed25519 JWT bound to actual mTLS. Service-only events.read
+        requires sub=iss, mode=worker, actor omitted (null rejected), and an explicit
+        registered namespace UUID subset. It grants no represented-user read.
+    delegatedRead:
+      type: http
+      scheme: Jobman-Delegation
+      bearerFormat: JWT
+      description: Pinned Ed25519 represented-user read assertion, at most 60 seconds, bound to the actual registered mTLS leaf certificate. See docs/DELEGATION.md.
+    serviceMutualTLS:
+      type: mutualTLS
+      description: Registered Dashboard service certificate with a trusted client chain and pinned leaf thumbprint.
     oidcBearer:
       type: http
       scheme: bearer
@@ -966,12 +1576,80 @@ components:
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
+    AuthorizationUnavailable:
+      description: authorization_unavailable; current directory or delegation authority cannot be verified.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
     ServerError:
       description: Service unavailable or internal failure.
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
   schemas:
+    DecimalCount: {type: string, pattern: "^[0-9]+$"}
+    ControlCapabilities:
+      type: object
+      required: [apiVersion, kind, capabilities]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: ControlCapabilities}
+        capabilities:
+          type: object
+          required: [instanceId, recoveryEpoch, serviceTime, contractVersions, features, maximumPageSize]
+          properties:
+            instanceId: {type: string, format: uuid}
+            recoveryEpoch: {$ref: "#/components/schemas/DecimalCount"}
+            serviceTime: {type: string, format: date-time}
+            contractVersions: {type: array, items: {type: string}}
+            features: {type: array, items: {type: string}}
+            maximumPageSize: {type: integer, const: 200}
+    NamespaceSummary:
+      type: object
+      required: [apiVersion, kind, summary]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: NamespaceSummary}
+        summary:
+          type: object
+          required: [namespaceId, namespace, asOf, completedFrom, completedBefore, total, active, awaitingExecution, evidenceAttention, missingCompletionTime, byPhase, byOutcome]
+          properties:
+            namespaceId: {type: string, format: uuid}
+            namespace: {$ref: "#/components/schemas/Name"}
+            asOf: {type: string, format: date-time}
+            completedFrom: {type: string, format: date-time}
+            completedBefore: {type: string, format: date-time}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            active: {$ref: "#/components/schemas/DecimalCount"}
+            awaitingExecution: {$ref: "#/components/schemas/DecimalCount"}
+            evidenceAttention: {$ref: "#/components/schemas/DecimalCount"}
+            missingCompletionTime: {$ref: "#/components/schemas/DecimalCount"}
+            byPhase: {type: object, additionalProperties: {$ref: "#/components/schemas/DecimalCount"}}
+            byOutcome: {type: object, additionalProperties: {$ref: "#/components/schemas/DecimalCount"}}
+    JobLifecycle:
+      type: object
+      properties:
+        startedAt: {type: string, format: date-time}
+        startedRecordedAt: {type: string, format: date-time}
+        startedProvenance: {type: string}
+        completedAt: {type: string, format: date-time}
+        completedRecordedAt: {type: string, format: date-time}
+        completedProvenance: {type: string}
+    RunReference:
+      type: object
+      required: [id, number]
+      properties:
+        id: {type: string, format: uuid}
+        number: {$ref: "#/components/schemas/DecimalCount"}
+        executionId: {type: string, format: uuid}
+    JobGroupReference:
+      type: object
+      properties:
+        collectionId: {type: string, format: uuid}
+        collectionIndex: {type: integer, minimum: 0}
+        graphId: {type: string, format: uuid}
+        graphIndex: {type: integer, minimum: 0}
+        graphDisposition: {type: string}
     CurrentPrincipal:
       type: object
       required: [apiVersion, kind, principal, authorizationCheckedAt, namespaces]
@@ -982,6 +1660,7 @@ components:
           type: object
           required: [issuer, subject]
           properties:
+            directoryId: {type: string, format: uuid}
             id: {type: string, format: uuid}
             issuer: {type: string}
             subject: {type: string}
@@ -1005,6 +1684,12 @@ components:
                 uniqueItems: true
                 description: Authorization capabilities, not feature availability promises.
                 items: {type: string}
+              authorizationCheckedAt: {type: string, format: date-time}
+              lastDirectoryVerifiedAt: {type: string, format: date-time}
+              authorizationExpiresAt: {type: string, format: date-time}
+              authorizationStatus:
+                enum: [verified]
+                description: Independently verified direct directory authority; expires after 120 seconds without complete reconciliation.
               authorizationVersion: {type: string, pattern: "^[1-9][0-9]*$"}
         nextPageToken: {type: string}
     MembershipGrantRequest:
@@ -1442,6 +2127,347 @@ components:
         byteLength: {type: integer, minimum: 0}
         checksum: {$ref: "#/components/schemas/Digest"}
         capturedAt: {type: string, format: date-time}
+    NamespaceReadAuthority:
+      type: object
+      required: [asOf, namespace, namespaceId, recoveryEpoch, authorizationVersion, authorizationCheckedAt]
+      properties:
+        asOf: {type: string, format: date-time}
+        namespace: {$ref: "#/components/schemas/Name"}
+        namespaceId: {type: string, format: uuid}
+        recoveryEpoch: {$ref: "#/components/schemas/DecimalCount"}
+        authorizationVersion: {$ref: "#/components/schemas/DecimalCount"}
+        authorizationCheckedAt: {type: string, format: date-time}
+        authorizationExpiresAt: {type: string, format: date-time}
+    CatalogStoreReference:
+      type: object
+      required: [name, version]
+      properties:
+        name: {type: string}
+        version: {$ref: "#/components/schemas/DecimalCount"}
+    CatalogTargetGeneration:
+      type: object
+      required: [id, number, executionBackend, transport, runtimes, operatingSystems, architectures, capabilities, partitions, partitionCount, partitionsTruncated, artifactStores, provider]
+      properties:
+        id: {type: string, format: uuid}
+        number: {$ref: "#/components/schemas/DecimalCount"}
+        executionBackend: {enum: [subprocess, slurm]}
+        transport: {const: agent-api}
+        runtimes: {type: array, items: {type: string}}
+        operatingSystems: {type: array, items: {type: string}}
+        architectures: {type: array, items: {type: string}}
+        capabilities: {type: array, items: {type: string}}
+        partitions: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/Partition"}}
+        partitionCount: {$ref: "#/components/schemas/DecimalCount"}
+        partitionsTruncated: {type: boolean}
+        logStore: {$ref: "#/components/schemas/CatalogStoreReference"}
+        artifactStores: {type: array, items: {$ref: "#/components/schemas/CatalogStoreReference"}}
+        provider: {$ref: "#/components/schemas/TargetProvider"}
+    CatalogTarget:
+      type: object
+      required: [id, name, kind, state, revision, createdAt, updatedAt, generation]
+      properties:
+        id: {type: string, format: uuid}
+        name: {$ref: "#/components/schemas/Name"}
+        kind: {enum: [host, slurm]}
+        state: {enum: [active, draining, disabled, retired]}
+        revision: {$ref: "#/components/schemas/DecimalCount"}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        generation: {$ref: "#/components/schemas/CatalogTargetGeneration"}
+    TargetCatalog:
+      allOf:
+        - {$ref: "#/components/schemas/NamespaceReadAuthority"}
+        - type: object
+          required: [apiVersion, kind, createdBefore, total, items]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: TargetCatalog}
+            createdBefore: {type: string, format: date-time}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            items: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/CatalogTarget"}, description: Also bounded at 2 MiB of encoded JSON.}
+            nextPageToken: {type: string}
+    TargetSnapshot:
+      allOf:
+        - {$ref: "#/components/schemas/NamespaceReadAuthority"}
+        - type: object
+          required: [apiVersion, kind, target]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: TargetSnapshot}
+            target: {$ref: "#/components/schemas/CatalogTarget"}
+    TargetPartitionList:
+      allOf:
+        - {$ref: "#/components/schemas/NamespaceReadAuthority"}
+        - type: object
+          required: [apiVersion, kind, targetId, generationId, total, items]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: TargetPartitionList}
+            targetId: {type: string, format: uuid}
+            generationId: {type: string, format: uuid}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            items: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/Partition"}}
+            nextPageToken: {type: string}
+    MonitoringCheckpointFields:
+      type: object
+      required: [controlInstanceId, recoveryEpoch, asOf, headCursor, oldestCursor, retentionSeconds, backlogCount]
+      properties:
+        controlInstanceId: {type: string, format: uuid}
+        recoveryEpoch: {type: string, pattern: '^[1-9][0-9]*$'}
+        asOf: {type: string, format: date-time}
+        headCursor: {type: string, minLength: 1, maxLength: 1024}
+        oldestCursor: {type: string, minLength: 1, maxLength: 1024}
+        retentionSeconds: {type: string, pattern: '^[1-9][0-9]*$'}
+        backlogCount: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        oldestUnpublishedRecordedAt: {type: string, format: date-time}
+    MonitoringCheckpoint:
+      allOf:
+        - {$ref: "#/components/schemas/MonitoringCheckpointFields"}
+        - type: object
+          required: [apiVersion, kind]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: MonitoringCheckpoint}
+    MonitoringEventList:
+      allOf:
+        - {$ref: "#/components/schemas/MonitoringCheckpointFields"}
+        - type: object
+          required: [apiVersion, kind, items, nextCursor, hasMore]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: MonitoringEventList}
+            items: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/MonitoringEvent"}}
+            nextCursor: {type: string, minLength: 1, maxLength: 1024}
+            hasMore: {type: boolean}
+    MonitoringEvent:
+      type: object
+      required: [eventId, position, namespaceId, jobId, ownerPrincipalId, oldPhase, newPhase, outcome, jobRevision, recordedAt, imported, reconciliation]
+      properties:
+        eventId: {type: string, format: uuid}
+        position: {type: string, pattern: '^[1-9][0-9]*$'}
+        namespaceId: {type: string, format: uuid}
+        jobId: {type: string, format: uuid}
+        runId: {type: string, format: uuid}
+        runNumber: {type: string, pattern: '^[1-9][0-9]*$'}
+        ownerPrincipalId: {type: string, format: uuid}
+        oldPhase: {enum: [accepted, assigning, accepted_execution, running]}
+        newPhase: {const: terminal}
+        outcome: {type: string}
+        jobRevision: {type: string, pattern: '^[1-9][0-9]*$'}
+        observedCompletedAt: {type: string, format: date-time}
+        recordedAt: {type: string, format: date-time}
+        imported: {type: boolean}
+        reconciliation: {type: boolean}
+    DiagnosticSnapshot:
+      allOf:
+        - {$ref: "#/components/schemas/NamespaceReadAuthority"}
+        - type: object
+          required: [apiVersion, kind, snapshot]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: DiagnosticSnapshot}
+            snapshot: {$ref: "#/components/schemas/SharedDiagnosticSnapshot"}
+    SharedDiagnosticSnapshot:
+      type: object
+      additionalProperties: false
+      description: Public core diagnostic.SharedSnapshot version 1, bounded to 2 MiB; client validates with the pinned core contract.
+      required: [kind, schema_version, captured_at, source, jobman_version, platform, job, runs, metadata, items, logs, omissions, redaction_notices]
+      properties:
+        kind: {const: jobman.shared_diagnostic_snapshot}
+        schema_version: {const: 1}
+        captured_at: {type: string, format: date-time}
+        source:
+          type: object
+          additionalProperties: false
+          required: [kind, deployment_id, control_instance_id, namespace_id, control_version, contract_version]
+          properties:
+            kind: {const: control}
+            deployment_id: {type: string, format: uuid}
+            control_instance_id: {type: string, format: uuid}
+            namespace_id: {type: string, format: uuid}
+            control_version: {type: string}
+            contract_version: {const: jobman.control/v1alpha1}
+        jobman_version: {type: string}
+        platform: {type: string}
+        job:
+          type: object
+          additionalProperties: false
+          required: [id, revision, phase]
+          properties:
+            id: {type: string, format: uuid}
+            revision: {$ref: "#/components/schemas/DecimalCount"}
+            phase: {type: string}
+            outcome: {type: string}
+        runs:
+          type: array
+          maxItems: 32
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, number]
+            properties:
+              id: {type: string, format: uuid}
+              number: {$ref: "#/components/schemas/DecimalCount"}
+              execution_id: {type: string, format: uuid}
+        metadata: {const: transactional_snapshot}
+        items:
+          type: array
+          maxItems: 1024
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, code, value, source, quality, disclosure]
+            properties:
+              id: {type: string}
+              code: {type: string}
+              value: {}
+              observed_at: {type: string, format: date-time}
+              source:
+                type: object
+                additionalProperties: false
+                required: [kind]
+                properties:
+                  kind: {const: control}
+                  entity_id: {type: string, format: uuid}
+                  revision: {type: integer, minimum: 0}
+              quality: {enum: [observed, derived_exact]}
+              disclosure: {const: metadata}
+        logs:
+          type: array
+          maxItems: 64
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, run_id, execution_id, stream, manifest_revision, bytes, complete]
+            properties:
+              id: {type: string, description: Opaque reference without a path or URL.}
+              run_id: {type: string, format: uuid}
+              execution_id: {type: string, format: uuid}
+              stream: {enum: [stdout, stderr]}
+              manifest_revision: {$ref: "#/components/schemas/DecimalCount"}
+              bytes: {$ref: "#/components/schemas/DecimalCount"}
+              complete: {type: boolean}
+        omissions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, affects]
+            properties:
+              code: {type: string}
+              affects: {type: array, items: {type: string}}
+        redaction_notices: {type: array, maxItems: 0, items: {type: object}, description: No source content is included that requires value redaction; unsupported disclosures are omissions.}
+    JobRun:
+      type: object
+      additionalProperties: false
+      required: [id, number, phase, desiredState, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        number: {type: string, pattern: "^[1-9][0-9]*$"}
+        phase: {type: string}
+        desiredState: {type: string}
+        outcome: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time, description: "Metadata update time, not an execution lifecycle timestamp."}
+        executionId: {type: string, format: uuid}
+        executionPhase: {type: string}
+        targetId: {type: string, format: uuid}
+        targetGenerationId: {type: string, format: uuid}
+        backend: {type: string}
+        confidence: {type: string}
+    RunList:
+      allOf:
+        - {$ref: "#/components/schemas/ManifestAuthority"}
+        - type: object
+          required: [apiVersion, kind, items, total]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: RunList}
+            items: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/JobRun"}}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            nextPageToken: {type: string, maxLength: 1024}
+    RunDetail:
+      allOf:
+        - {$ref: "#/components/schemas/ManifestAuthority"}
+        - type: object
+          required: [apiVersion, kind, run]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: RunDetail}
+            run: {$ref: "#/components/schemas/JobRun"}
+    ManifestAuthority:
+      type: object
+      required: [asOf, namespace, namespaceId, jobId, recoveryEpoch, authorizationVersion, authorizationCheckedAt]
+      properties:
+        asOf: {type: string, format: date-time}
+        namespace: {$ref: "#/components/schemas/Name"}
+        namespaceId: {type: string, format: uuid}
+        jobId: {type: string, format: uuid}
+        recoveryEpoch: {$ref: "#/components/schemas/DecimalCount"}
+        authorizationVersion: {$ref: "#/components/schemas/DecimalCount"}
+        authorizationCheckedAt: {type: string, format: date-time}
+        authorizationExpiresAt: {type: string, format: date-time}
+    BoundedLogChunk:
+      type: object
+      required: [sequence, byteOffset, byteLength, checksum, storeName, storeVersion, objectKey, capturedAt, complete, truncated]
+      properties:
+        sequence: {$ref: "#/components/schemas/DecimalCount"}
+        byteOffset: {$ref: "#/components/schemas/DecimalCount"}
+        byteLength: {$ref: "#/components/schemas/DecimalCount", description: At most 262144 bytes.}
+        checksum: {$ref: "#/components/schemas/Digest"}
+        storeName: {type: string}
+        storeVersion: {$ref: "#/components/schemas/DecimalCount"}
+        objectKey: {type: string, maxLength: 1024}
+        capturedAt: {type: string, format: date-time}
+        complete: {type: boolean}
+        truncated: {type: boolean}
+    LogChunkList:
+      allOf:
+        - {$ref: "#/components/schemas/ManifestAuthority"}
+        - type: object
+          required: [apiVersion, kind, stream, state, manifestRevision, byteLength, lastSequence, fromOffset, truncated, chunks]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: LogChunkList}
+            runId: {type: string, format: uuid}
+            runNumber: {$ref: "#/components/schemas/DecimalCount"}
+            executionId: {type: string, format: uuid}
+            targetGenerationId: {type: string, format: uuid}
+            stream: {enum: [stdout, stderr]}
+            state: {enum: [not_captured, open, complete]}
+            manifestRevision: {$ref: "#/components/schemas/DecimalCount", description: Zero only when no stored stream exists.}
+            byteLength: {$ref: "#/components/schemas/DecimalCount"}
+            lastSequence: {$ref: "#/components/schemas/DecimalCount"}
+            fromOffset: {$ref: "#/components/schemas/DecimalCount"}
+            truncated: {type: boolean}
+            chunks: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/BoundedLogChunk"}}
+            nextAfterSequence: {$ref: "#/components/schemas/DecimalCount"}
+    BoundedArtifact:
+      type: object
+      required: [runId, runNumber, executionId, targetGenerationId, name, storeName, storeVersion, objectKey, byteLength, checksum, publishedAt]
+      properties:
+        runId: {type: string, format: uuid}
+        runNumber: {$ref: "#/components/schemas/DecimalCount"}
+        executionId: {type: string, format: uuid}
+        targetGenerationId: {type: string, format: uuid}
+        name: {type: string}
+        storeName: {type: string}
+        storeVersion: {$ref: "#/components/schemas/DecimalCount"}
+        objectKey: {type: string}
+        byteLength: {$ref: "#/components/schemas/DecimalCount"}
+        checksum: {$ref: "#/components/schemas/Digest"}
+        publishedAt: {type: string, format: date-time}
+    ArtifactList:
+      allOf:
+        - {$ref: "#/components/schemas/ManifestAuthority"}
+        - type: object
+          required: [apiVersion, kind, total, items]
+          properties:
+            apiVersion: {const: jobman.control/v1alpha1}
+            kind: {const: ArtifactList}
+            total: {$ref: "#/components/schemas/DecimalCount"}
+            items: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/BoundedArtifact"}}
+            nextPageToken: {type: string}
     JobLogManifest:
       type: object
       additionalProperties: false
@@ -1497,6 +2523,7 @@ components:
       type: object
       required: [apiVersion, kind, metadata, spec, status]
       properties:
+        asOf: {type: string, format: date-time}
         apiVersion: {const: jobman.control/v1alpha1}
         kind: {const: Job}
         metadata:
@@ -1505,6 +2532,15 @@ components:
           properties:
             id: {type: string, format: uuid}
             namespace: {$ref: "#/components/schemas/Name"}
+            namespaceId: {type: string, format: uuid}
+            owner:
+              type: object
+              required: [id, issuer, subject, displayName]
+              properties:
+                id: {type: string, format: uuid}
+                issuer: {type: string}
+                subject: {type: string}
+                displayName: {type: string}
             name: {$ref: "#/components/schemas/Name"}
             labels: {type: object, additionalProperties: {type: string}}
             revision: {type: integer, minimum: 1}
@@ -1528,6 +2564,10 @@ components:
           type: object
           required: [phase, desiredState]
           properties:
+            imported: {type: boolean}
+            lifecycle: {$ref: "#/components/schemas/JobLifecycle"}
+            currentRun: {$ref: "#/components/schemas/RunReference"}
+            group: {$ref: "#/components/schemas/JobGroupReference"}
             phase: {enum: [accepted, assigning, accepted_execution, running, terminal]}
             desiredState: {enum: [run, cancel]}
             outcome: {enum: [success, failure, cancelled, timed_out, aborted, lost]}
@@ -1550,6 +2590,7 @@ components:
       additionalProperties: false
       required: [apiVersion, kind, items]
       properties:
+        asOf: {type: string, format: date-time}
         apiVersion: {const: jobman.control/v1alpha1}
         kind: {const: JobList}
         items:
@@ -1557,6 +2598,169 @@ components:
           maxItems: 200
           items: {$ref: "#/components/schemas/Job"}
         nextPageToken: {type: string, minLength: 1, maxLength: 1024}
+    CollectionSummaryDocument:
+      type: object
+      additionalProperties: false
+      required: [metadata, spec, status]
+      properties:
+        metadata: {$ref: "#/components/schemas/Collection/properties/metadata"}
+        spec: {$ref: "#/components/schemas/Collection/properties/spec"}
+        status: {$ref: "#/components/schemas/Collection/properties/status"}
+    GraphSummaryDocument:
+      type: object
+      additionalProperties: false
+      required: [metadata, spec, status]
+      properties:
+        metadata: {$ref: "#/components/schemas/Graph/properties/metadata"}
+        spec: {$ref: "#/components/schemas/Graph/properties/spec"}
+        status: {$ref: "#/components/schemas/Graph/properties/status"}
+    CollectionSummary:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, asOf, summary]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: CollectionSummary}
+        asOf: {type: string, format: date-time}
+        summary: {$ref: "#/components/schemas/CollectionSummaryDocument"}
+    CollectionList:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, asOf, total, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: CollectionList}
+        asOf: {type: string, format: date-time}
+        total: {type: string, pattern: '^[0-9]+$'}
+        createdBefore: {type: string, format: date-time}
+        nextPageToken: {type: string}
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/CollectionSummaryDocument"}
+    GraphSummary:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, asOf, summary]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: GraphSummary}
+        asOf: {type: string, format: date-time}
+        summary: {$ref: "#/components/schemas/GraphSummaryDocument"}
+    GraphList:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, asOf, total, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: GraphList}
+        asOf: {type: string, format: date-time}
+        total: {type: string, pattern: '^[0-9]+$'}
+        createdBefore: {type: string, format: date-time}
+        nextPageToken: {type: string}
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/GraphSummaryDocument"}
+    CollectionItem:
+      type: object
+      additionalProperties: false
+      required: [index, name, job]
+      properties:
+        index: {type: integer, minimum: 0, maximum: 9999}
+        arrayTaskIndex:
+          type: integer
+          minimum: 0
+          maximum: 9999
+          description: Immutable Slurm array assignment task index; present only for slurm-array mode. This is the source binding, not a page position or proof of execution.
+        name: {$ref: "#/components/schemas/Name"}
+        job: {$ref: "#/components/schemas/Job"}
+    GraphNode:
+      type: object
+      additionalProperties: false
+      required: [index, name, dependencyCounts, job]
+      properties:
+        index: {type: integer, minimum: 0, maximum: 9999}
+        name: {$ref: "#/components/schemas/Name"}
+        disposition: {type: string}
+        job: {$ref: "#/components/schemas/Job"}
+        dependencyCounts:
+          type: object
+          additionalProperties: false
+          required: [total, satisfied, waiting, unsatisfied]
+          properties:
+            total: {type: integer, minimum: 0}
+            satisfied: {type: integer, minimum: 0}
+            waiting: {type: integer, minimum: 0}
+            unsatisfied: {type: integer, minimum: 0}
+    CollectionItemList:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, asOf, total, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: CollectionItemList}
+        asOf: {type: string, format: date-time}
+        total: {type: string, pattern: '^[0-9]+$'}
+        nextAfterIndex: {type: integer, minimum: 0, maximum: 9999}
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/CollectionItem"}
+    GraphNodeList:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, asOf, total, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: GraphNodeList}
+        asOf: {type: string, format: date-time}
+        total: {type: string, pattern: '^[0-9]+$'}
+        nextAfterIndex: {type: integer, minimum: 0, maximum: 9999}
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/GraphNode"}
+    GraphEdge:
+      type: object
+      additionalProperties: false
+      required: [from, to, fromJobId, toJobId, predicate, outcomes, upstreamPhase, state]
+      properties:
+        from: {$ref: "#/components/schemas/Name"}
+        to: {$ref: "#/components/schemas/Name"}
+        fromJobId: {type: string, format: uuid}
+        toJobId: {type: string, format: uuid}
+        predicate: {enum: [success, failure, any-terminal, outcomes]}
+        outcomes: {type: array, items: {type: string}}
+        upstreamPhase: {type: string}
+        upstreamOutcome: {type: string}
+        state: {enum: [waiting, satisfied, unsatisfied]}
+    GraphDependencyList:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, asOf, total, items]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: GraphDependencyList}
+        asOf: {type: string, format: date-time}
+        total: {type: string, pattern: '^[0-9]+$'}
+        nextPageToken: {type: string}
+        items: {type: array, maxItems: 500, items: {$ref: "#/components/schemas/GraphEdge"}}
+    GraphNeighborhood:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, asOf, centerId, nodes, edges, totalNodes, totalEdges, omittedNodes, omittedEdges]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: GraphNeighborhood}
+        asOf: {type: string, format: date-time}
+        centerId: {type: string, format: uuid}
+        nodes: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/GraphNode"}}
+        edges: {type: array, maxItems: 500, items: {$ref: "#/components/schemas/GraphEdge"}}
+        totalNodes: {type: integer, minimum: 1, maximum: 10000}
+        totalEdges: {type: integer, minimum: 0, maximum: 100000}
+        omittedNodes: {type: integer, minimum: 0}
+        omittedEdges: {type: integer, minimum: 0}
     Collection:
       type: object
       additionalProperties: false

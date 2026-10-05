@@ -11,6 +11,8 @@ import (
 var (
 	// ErrForbidden means the principal cannot access the requested namespace.
 	ErrForbidden = errors.New("forbidden")
+	// ErrAuthorizationUnavailable means current authority cannot be verified.
+	ErrAuthorizationUnavailable = errors.New("authorization unavailable")
 	// ErrNotFound means the authorized lookup found no resource.
 	ErrNotFound = errors.New("not found")
 	// ErrIdempotencyConflict means an idempotency key was reused for different intent.
@@ -46,8 +48,9 @@ var knownJobPhases = map[string]struct{}{
 
 // Principal is the stable identity asserted by the authentication layer.
 type Principal struct {
-	Issuer  string
-	Subject string
+	Delegation *DelegatedActor
+	Issuer     string
+	Subject    string
 }
 
 // DevelopmentIdentity describes the one explicitly configured development
@@ -117,6 +120,13 @@ type ExecutionFeatures struct {
 
 // Job is the current durable shared job snapshot.
 type Job struct {
+	AsOf                  time.Time
+	NamespaceID           string
+	Owner                 *JobOwner
+	Imported              bool
+	Lifecycle             JobLifecycle
+	CurrentRun            *RunReference
+	Group                 JobGroupReference
 	ID                    string
 	Namespace             string
 	Name                  string
@@ -158,9 +168,10 @@ type SubmitResult struct {
 
 // CollectionItem identifies one ordered child job.
 type CollectionItem struct {
-	Index int
-	Name  string
-	Job   Job
+	ArrayTaskIndex *int
+	Index          int
+	Name           string
+	Job            Job
 }
 
 // Collection is the current aggregate snapshot. Child Jobs remain the source
@@ -285,9 +296,16 @@ type HistoryImportResult struct {
 
 // JobListOptions selects one stable, newest-first page of namespace jobs.
 type JobListOptions struct {
-	Limit  int
-	Phase  string
-	Before *JobCursor
+	JobID            string
+	Confidence       string
+	Outcome          string
+	OwnerPrincipalID string
+	CompletedFrom    *time.Time
+	CompletedBefore  *time.Time
+	CreatedBefore    *time.Time
+	Limit            int
+	Phase            string
+	Before           *JobCursor
 }
 
 // JobCursor identifies the exclusive upper boundary of the next page.
@@ -298,6 +316,7 @@ type JobCursor struct {
 
 // JobPage contains one page and an optional continuation cursor.
 type JobPage struct {
+	AsOf       time.Time
 	Jobs       []Job
 	NextCursor *JobCursor
 }
@@ -321,4 +340,9 @@ type JobRepository interface {
 	ImportCompletedHistory(context.Context, Principal, string, bool, CompletedHistoryImport) (HistoryImportResult, error)
 	ListJobs(context.Context, Principal, string, JobListOptions) (JobPage, error)
 	GetJob(context.Context, Principal, string, string) (Job, error)
+}
+
+// ValidJobPhaseFilter accepts lifecycle phases and documented monitoring presets.
+func ValidJobPhaseFilter(phase string) bool {
+	return ValidJobPhase(phase) || phase == "active" || phase == "awaiting"
 }

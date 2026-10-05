@@ -189,3 +189,79 @@ func mapLookup(values map[string]string) lookupEnvironment {
 		return value, exists
 	}
 }
+
+func TestDelegationConfigurationRequiresVerifiedTransport(t *testing.T) {
+	t.Parallel()
+	baseline := map[string]string{
+		"JOBMAN_CONTROL_AGENT_CA_CERT_FILE": "agent-ca.pem",
+		"JOBMAN_CONTROL_AGENT_CA_KEY_FILE":  "agent-ca.key",
+		"JOBMAN_CONTROL_DATABASE_URL":       "postgres://unused",
+		"JOBMAN_CONTROL_AUTH_MODE":          "oidc",
+		"JOBMAN_CONTROL_OIDC_ISSUER":        "https://identity.example.edu",
+		"JOBMAN_CONTROL_OIDC_AUDIENCE":      "jobman-control",
+		"JOBMAN_CONTROL_AGENT_TOKEN_KEY":    base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+		"JOBMAN_CONTROL_TLS_CERT_FILE":      "server.pem", "JOBMAN_CONTROL_TLS_KEY_FILE": "server.key",
+		"JOBMAN_CONTROL_DELEGATION_REGISTRY_FILE": "services.json", "JOBMAN_CONTROL_DELEGATION_CLIENT_CA_FILE": "client-ca.pem",
+	}
+	configuration, err := load(mapLookup(baseline))
+	if err != nil || configuration.DelegationRegistryFile != "services.json" || configuration.DelegationAuditRetention != 90*24*time.Hour {
+		t.Fatalf("delegation configuration=%#v,%v", configuration, err)
+	}
+	for _, key := range []string{"JOBMAN_CONTROL_TLS_CERT_FILE", "JOBMAN_CONTROL_DELEGATION_CLIENT_CA_FILE", "JOBMAN_CONTROL_DELEGATION_REGISTRY_FILE"} {
+		copyValues := make(map[string]string, len(baseline))
+		for name, value := range baseline {
+			copyValues[name] = value
+		}
+		delete(copyValues, key)
+		if _, loadErr := load(mapLookup(copyValues)); loadErr == nil {
+			t.Fatalf("missing %s accepted", key)
+		}
+	}
+	baseline["JOBMAN_CONTROL_DELEGATION_AUDIT_RETENTION"] = "24h"
+	if _, err = load(mapLookup(baseline)); err == nil {
+		t.Fatal("short audit retention accepted")
+	}
+	delete(baseline, "JOBMAN_CONTROL_DELEGATION_AUDIT_RETENTION")
+	baseline["JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE"] = "directory.json"
+	configuration, err = load(mapLookup(baseline))
+	if err != nil || configuration.DirectoryMode != "preview" {
+		t.Fatalf("directory preview default=%#v,%v", configuration, err)
+	}
+	baseline["JOBMAN_CONTROL_DIRECTORY_MODE"] = "enforce"
+	if _, err = load(mapLookup(baseline)); err != nil {
+		t.Fatalf("directory enforcement=%v", err)
+	}
+	baseline["JOBMAN_CONTROL_DIRECTORY_MODE"] = "unsafe"
+	if _, err = load(mapLookup(baseline)); err == nil {
+		t.Fatal("unknown directory mode accepted")
+	}
+}
+
+func TestDiagnosticDeploymentIdentity(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"", "79000000-0000-4000-8000-000000000001", "not-an-id"} {
+		configuration, err := load(mapLookup(map[string]string{"JOBMAN_CONTROL_DATABASE_URL": "postgres://unused", "JOBMAN_CONTROL_DEVELOPMENT_AUTH": "true", "JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID": id}))
+		if id == "not-an-id" {
+			if err == nil {
+				t.Fatal("invalid evidence deployment accepted")
+			}
+			continue
+		}
+		if err != nil || configuration.DiagnosticDeploymentID != id {
+			t.Fatalf("diagnostic source configuration=%q,%v", configuration.DiagnosticDeploymentID, err)
+		}
+	}
+}
+
+func TestMonitoringRetentionConfiguration(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"23h", "8761h", "720h1ns", "invalid"} {
+		if _, err := load(mapLookup(map[string]string{"JOBMAN_CONTROL_DATABASE_URL": "postgres://unused", "JOBMAN_CONTROL_DEVELOPMENT_AUTH": "true", "JOBMAN_CONTROL_MONITORING_FEED_RETENTION": value})); err == nil {
+			t.Fatalf("invalid retention %q accepted", value)
+		}
+	}
+	result, err := load(mapLookup(map[string]string{"JOBMAN_CONTROL_DATABASE_URL": "postgres://unused", "JOBMAN_CONTROL_DEVELOPMENT_AUTH": "true"}))
+	if err != nil || result.MonitoringFeedRetention != 30*24*time.Hour {
+		t.Fatalf("retention=%v,%v", result.MonitoringFeedRetention, err)
+	}
+}

@@ -2,7 +2,10 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/ryancswallace/jobman-control/internal/domain"
 )
@@ -15,8 +18,18 @@ func (store *Store) GetJobArtifacts(
 	principal domain.Principal,
 	namespace, jobID string,
 ) ([]domain.PublishedArtifact, error) {
-	var authorized bool
-	if err := store.pool.QueryRow(ctx, `
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) ([]domain.PublishedArtifact, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityArtifactsRead)
+		if authErr != nil {
+			if principal.Delegation == nil && errors.Is(authErr, domain.ErrForbidden) {
+				return nil, domain.ErrNotFound
+			}
+			return nil, authErr
+		}
+		principal = authorization.canonical
+
+		var authorized bool
+		if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM jobs AS j
 			JOIN namespaces AS n ON n.id = j.namespace_id
@@ -25,13 +38,13 @@ func (store *Store) GetJobArtifacts(
 			WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND j.id = $4
 		)
 	`, principal.Issuer, principal.Subject, namespace, jobID).Scan(&authorized); err != nil {
-		return nil, fmt.Errorf("authorize job artifacts: %w", err)
-	}
-	if !authorized {
-		return nil, domain.ErrNotFound
-	}
+			return nil, fmt.Errorf("authorize job artifacts: %w", err)
+		}
+		if !authorized {
+			return nil, domain.ErrNotFound
+		}
 
-	rows, err := store.pool.Query(ctx, `
+		rows, err := tx.Query(ctx, `
 		SELECT artifact.execution_id::text, run.run_number, artifact.name,
 			artifact.store_name, artifact.store_version, artifact.object_key,
 			artifact.byte_length, artifact.checksum, artifact.created_at
@@ -41,25 +54,26 @@ func (store *Store) GetJobArtifacts(
 		WHERE run.job_id = $1
 		ORDER BY run.run_number, execution.created_at, artifact.name
 	`, jobID)
-	if err != nil {
-		return nil, fmt.Errorf("query job artifacts: %w", err)
-	}
-	defer rows.Close()
-
-	result := []domain.PublishedArtifact{}
-	for rows.Next() {
-		var artifact domain.PublishedArtifact
-		if err = rows.Scan(
-			&artifact.ExecutionID, &artifact.RunNumber, &artifact.Name,
-			&artifact.StoreName, &artifact.StoreVersion, &artifact.ObjectKey,
-			&artifact.ByteLength, &artifact.Checksum, &artifact.PublishedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan job artifact manifest: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("query job artifacts: %w", err)
 		}
-		result = append(result, artifact)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate job artifact manifest: %w", err)
-	}
-	return result, nil
+		defer rows.Close()
+
+		result := []domain.PublishedArtifact{}
+		for rows.Next() {
+			var artifact domain.PublishedArtifact
+			if err = rows.Scan(
+				&artifact.ExecutionID, &artifact.RunNumber, &artifact.Name,
+				&artifact.StoreName, &artifact.StoreVersion, &artifact.ObjectKey,
+				&artifact.ByteLength, &artifact.Checksum, &artifact.PublishedAt,
+			); err != nil {
+				return nil, fmt.Errorf("scan job artifact manifest: %w", err)
+			}
+			result = append(result, artifact)
+		}
+		if err = rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate job artifact manifest: %w", err)
+		}
+		return result, nil
+	})
 }

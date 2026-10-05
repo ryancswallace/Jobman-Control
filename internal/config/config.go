@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ryancswallace/jobman-control/internal/domain"
 )
 
 var namespacePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
@@ -38,6 +40,13 @@ const (
 // Config contains validated service settings. DatabaseURL is secret-bearing
 // and must never be logged or returned by an endpoint.
 type Config struct {
+	MonitoringFeedRetention  time.Duration
+	DiagnosticDeploymentID   string
+	DirectoryConfigFile      string
+	DirectoryMode            string
+	DelegationRegistryFile   string
+	DelegationClientCAFile   string
+	DelegationAuditRetention time.Duration
 	DatabaseURL              string
 	ListenAddress            string
 	DevelopmentAuth          bool
@@ -126,7 +135,31 @@ func load(lookup lookupEnvironment) (Config, error) {
 		return Config{}, err
 	}
 
+	registryFile := strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DELEGATION_REGISTRY_FILE", ""))
+	clientCAFile := strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DELEGATION_CLIENT_CA_FILE", ""))
+	if (registryFile == "") != (clientCAFile == "") {
+		return Config{}, errors.New("delegation registry and client CA must be configured together")
+	}
+	if registryFile != "" && (tlsCertificateFile == "" || authMode != AuthModeOIDC) {
+		return Config{}, errors.New("delegation requires server TLS and production OIDC authentication")
+	}
+	auditRetention, retentionErr := durationValue(lookup, "JOBMAN_CONTROL_DELEGATION_AUDIT_RETENTION", 90*24*time.Hour, 90*24*time.Hour, 3650*24*time.Hour)
+	if retentionErr != nil {
+		return Config{}, retentionErr
+	}
+	monitoringRetention, err := durationValue(lookup, "JOBMAN_CONTROL_MONITORING_FEED_RETENTION", 30*24*time.Hour, 24*time.Hour, 365*24*time.Hour)
+	if err != nil {
+		return Config{}, err
+	}
+	if monitoringRetention%time.Second != 0 {
+		return Config{}, errors.New("monitoring retention must be whole seconds")
+	}
 	configuration := Config{
+		MonitoringFeedRetention: monitoringRetention,
+		DiagnosticDeploymentID:  strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID", "")),
+		DirectoryConfigFile:     strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE", "")),
+		DirectoryMode:           strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_MODE", "preview")),
+		DelegationRegistryFile:  registryFile, DelegationClientCAFile: clientCAFile, DelegationAuditRetention: auditRetention,
 		DatabaseURL:              databaseURL,
 		ListenAddress:            listenAddress,
 		DevelopmentAuth:          developmentAuth,
@@ -158,8 +191,17 @@ func load(lookup lookupEnvironment) (Config, error) {
 		ShutdownTimeout:          10 * time.Second,
 		ReadinessTimeout:         2 * time.Second,
 	}
+	if configuration.DiagnosticDeploymentID != "" && !domain.IsID(configuration.DiagnosticDeploymentID) {
+		return Config{}, errors.New("diagnostic deployment identity must be a UUID")
+	}
 	if authModeErr := validateAuthentication(lookup, &configuration); authModeErr != nil {
 		return Config{}, authModeErr
+	}
+	if configuration.DirectoryMode != "preview" && configuration.DirectoryMode != "enforce" {
+		return Config{}, errors.New("directory mode must be preview or enforce")
+	}
+	if configuration.DirectoryConfigFile != "" && (configuration.AuthMode != AuthModeOIDC || configuration.TLSCertificateFile == "") {
+		return Config{}, errors.New("directory authorization requires production OIDC and server TLS")
 	}
 
 	return configuration, nil

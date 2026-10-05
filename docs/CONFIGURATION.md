@@ -17,7 +17,7 @@ container images, command-line arguments, or ordinary logs.
 | `JOBMAN_CONTROL_DEVELOPMENT_NAMESPACE` | `default` | Development namespace |
 | `JOBMAN_CONTROL_OIDC_ISSUER` | required in OIDC mode | Exact HTTPS discovery issuer |
 | `JOBMAN_CONTROL_OIDC_AUDIENCE` | required in OIDC mode | Required token audience |
-| `JOBMAN_CONTROL_AGENT_TOKEN_KEY` | required in OIDC mode | Unpadded base64url encoding of at least 32 secret bytes |
+| `JOBMAN_CONTROL_AGENT_TOKEN_KEY` | required in OIDC mode | Unpadded base64url encoding of at least 32 secret bytes; persistent agent-token and purpose-separated monitoring-cursor key, shared by all replicas |
 | `JOBMAN_CONTROL_BOOTSTRAP_SUBJECT` | unset | Optional first administrator subject |
 | `JOBMAN_CONTROL_BOOTSTRAP_NAME` | unset | Bootstrap administrator display name |
 | `JOBMAN_CONTROL_BOOTSTRAP_NAMESPACE` | unset | Bootstrap administrator namespace |
@@ -56,3 +56,12 @@ fails if migrations are pending, changed, or unknown to the binary.
 See [`etc/jobman-control/jobman-control.env.example`](../etc/jobman-control/jobman-control.env.example)
 for placeholders. That file is not usable until every value is replaced and
 the resulting file is stored privately outside version control.
+
+The optional `JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID` is the immutable Dashboard
+registry source UUID. Configuring it enables `shared-diagnostic-snapshots`; all
+replicas must preserve this identity. See [Shared diagnostic snapshots](DIAGNOSTIC_SNAPSHOTS.md).
+
+`JOBMAN_CONTROL_MONITORING_FEED_RETENTION` defaults to `720h`, independently of
+namespace outbox and Dashboard inbox retention. Valid values are whole-second
+durations from `24h` through `8760h`; configure the same value on all replicas.
+See [monitoring events](MONITORING_EVENTS.md) before reducing the retained window.

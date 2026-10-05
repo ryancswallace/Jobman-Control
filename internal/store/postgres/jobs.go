@@ -110,46 +110,30 @@ func (store *Store) GetJob(
 	namespace string,
 	jobID string,
 ) (domain.Job, error) {
-	job, err := scanJob(store.pool.QueryRow(ctx, `
-		SELECT
-			j.id::text, n.name, j.name, j.labels::text, j.phase,
-			j.desired_state, COALESCE(j.outcome, ''), j.placement_target,
-			COALESCE(j.placement_partition, ''), j.workload_digest,
-			j.request_digest, j.revision, j.created_at, j.updated_at,
-			COALESCE(j.target_id::text, ''), COALESCE(j.target_generation_id::text, ''),
-			COALESCE(tg.execution_backend, ''),
-			COALESCE(current_execution.native_id, ''),
-			COALESCE(current_execution.native_backend, ''),
-			COALESCE(current_execution.native_state, ''),
-			COALESCE(current_execution.native_reason, ''),
-			COALESCE(current_execution.native_cluster, ''),
-			current_execution.native_observed_at,
-			COALESCE(current_execution.observation_confidence, ''),
-			current_execution.confidence_updated_at
-		FROM jobs AS j
-		JOIN namespaces AS n ON n.id = j.namespace_id
-		JOIN authorized_memberships AS m ON m.namespace_id = n.id
-		JOIN principals AS p ON p.id = m.principal_id
-		LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
-		LEFT JOIN LATERAL (
-			SELECT e.native_id, e.native_backend, e.native_state,
-				e.native_reason, e.native_cluster, e.native_observed_at,
-				e.observation_confidence, e.confidence_updated_at
-			FROM runs AS current_run
-			JOIN executions AS e ON e.run_id = current_run.id
-			WHERE current_run.job_id = j.id
-			ORDER BY current_run.run_number DESC LIMIT 1
-		) AS current_execution ON true
-		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND j.id = $4
-	`, principal.Issuer, principal.Subject, namespace, jobID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Job{}, domain.ErrNotFound
-	}
-	if err != nil {
-		return domain.Job{}, fmt.Errorf("get job: %w", err)
-	}
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.Job, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityJobsRead)
+		if authErr != nil {
+			if principal.Delegation == nil && errors.Is(authErr, domain.ErrForbidden) {
+				return domain.Job{}, domain.ErrNotFound
+			}
+			return domain.Job{}, authErr
+		}
+		principal = authorization.canonical
 
-	return job, nil
+		job, err := scanJob(tx.QueryRow(ctx, jobSelect+`
+        JOIN authorized_memberships AS m ON m.namespace_id = n.id
+        JOIN principals AS p ON p.id = m.principal_id
+        WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND j.id = $4
+	`, principal.Issuer, principal.Subject, namespace, jobID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Job{}, domain.ErrNotFound
+		}
+		if err != nil {
+			return domain.Job{}, fmt.Errorf("get job: %w", err)
+		}
+
+		return job, nil
+	})
 }
 
 // ListJobs returns a bounded, keyset-paginated namespace history to any
@@ -161,23 +145,49 @@ func (store *Store) ListJobs(
 	namespace string,
 	options domain.JobListOptions,
 ) (domain.JobPage, error) {
-	if options.Limit < 1 || options.Limit > domain.MaximumJobListLimit {
-		return domain.JobPage{}, errors.New("job list limit is out of range")
-	}
-	if options.Phase != "" && !domain.ValidJobPhase(options.Phase) {
-		return domain.JobPage{}, errors.New("job list phase is invalid")
-	}
-	var beforeTime any
-	var beforeID any
-	if options.Before != nil {
-		if options.Before.CreatedAt.IsZero() || !domain.IsID(options.Before.ID) {
-			return domain.JobPage{}, errors.New("job list cursor is invalid")
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.JobPage, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityJobsRead)
+		if authErr != nil {
+			return domain.JobPage{}, authErr
 		}
-		beforeTime = options.Before.CreatedAt.UTC()
-		beforeID = options.Before.ID
-	}
-	var authorized bool
-	if err := store.pool.QueryRow(ctx, `
+		principal = authorization.canonical
+		snapshotTime, timeErr := querySnapshotTime(ctx, tx)
+		if timeErr != nil {
+			return domain.JobPage{}, timeErr
+		}
+
+		if options.JobID != "" && !domain.IsID(options.JobID) {
+			return domain.JobPage{}, errors.New("job ID is invalid")
+		}
+		if options.Confidence != "" && !slices.Contains([]string{"current", "stale", "uncertain", "lost", "attention"}, options.Confidence) {
+			return domain.JobPage{}, errors.New("confidence filter is invalid")
+		}
+		if options.OwnerPrincipalID != "" && !domain.IsID(options.OwnerPrincipalID) {
+			return domain.JobPage{}, errors.New("job owner is invalid")
+		}
+		if len(options.Outcome) > 64 {
+			return domain.JobPage{}, errors.New("job outcome is invalid")
+		}
+		if options.CompletedFrom != nil && options.CompletedBefore != nil && !options.CompletedFrom.Before(*options.CompletedBefore) {
+			return domain.JobPage{}, errors.New("completion window is invalid")
+		}
+		if options.Limit < 1 || options.Limit > domain.MaximumJobListLimit {
+			return domain.JobPage{}, errors.New("job list limit is out of range")
+		}
+		if options.Phase != "" && !domain.ValidJobPhaseFilter(options.Phase) {
+			return domain.JobPage{}, errors.New("job list phase is invalid")
+		}
+		var beforeTime any
+		var beforeID any
+		if options.Before != nil {
+			if options.Before.CreatedAt.IsZero() || !domain.IsID(options.Before.ID) {
+				return domain.JobPage{}, errors.New("job list cursor is invalid")
+			}
+			beforeTime = options.Before.CreatedAt.UTC()
+			beforeID = options.Before.ID
+		}
+		var authorized bool
+		if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM principals AS p
@@ -186,70 +196,36 @@ func (store *Store) ListJobs(
 			WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
 		)
 	`, principal.Issuer, principal.Subject, namespace).Scan(&authorized); err != nil {
-		return domain.JobPage{}, fmt.Errorf("authorize job list: %w", err)
-	}
-	if !authorized {
-		return domain.JobPage{}, domain.ErrForbidden
-	}
-	rows, err := store.pool.Query(ctx, `
-		SELECT
-			j.id::text, n.name, j.name, j.labels::text, j.phase,
-			j.desired_state, COALESCE(j.outcome, ''), j.placement_target,
-			COALESCE(j.placement_partition, ''), j.workload_digest,
-			j.request_digest, j.revision, j.created_at, j.updated_at,
-			COALESCE(j.target_id::text, ''), COALESCE(j.target_generation_id::text, ''),
-			COALESCE(tg.execution_backend, ''),
-			COALESCE(current_execution.native_id, ''),
-			COALESCE(current_execution.native_backend, ''),
-			COALESCE(current_execution.native_state, ''),
-			COALESCE(current_execution.native_reason, ''),
-			COALESCE(current_execution.native_cluster, ''),
-			current_execution.native_observed_at,
-			COALESCE(current_execution.observation_confidence, ''),
-			current_execution.confidence_updated_at
-		FROM jobs AS j
-		JOIN namespaces AS n ON n.id = j.namespace_id
-		JOIN authorized_memberships AS m ON m.namespace_id = n.id
-		JOIN principals AS p ON p.id = m.principal_id
-		LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
-		LEFT JOIN LATERAL (
-			SELECT e.native_id, e.native_backend, e.native_state,
-				e.native_reason, e.native_cluster, e.native_observed_at,
-				e.observation_confidence, e.confidence_updated_at
-			FROM runs AS current_run
-			JOIN executions AS e ON e.run_id = current_run.id
-			WHERE current_run.job_id = j.id
-			ORDER BY current_run.run_number DESC LIMIT 1
-		) AS current_execution ON true
-		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3
-			AND ($4::text = '' OR j.phase = $4)
-			AND ($5::timestamptz IS NULL OR (j.created_at, j.id) < ($5, $6::uuid))
-		ORDER BY j.created_at DESC, j.id DESC
-		LIMIT $7
-	`, principal.Issuer, principal.Subject, namespace, options.Phase, beforeTime, beforeID, options.Limit+1)
-	if err != nil {
-		return domain.JobPage{}, fmt.Errorf("list jobs: %w", err)
-	}
-	defer rows.Close()
-	jobs := make([]domain.Job, 0, options.Limit+1)
-	for rows.Next() {
-		job, scanErr := scanJob(rows)
-		if scanErr != nil {
-			return domain.JobPage{}, fmt.Errorf("scan job: %w", scanErr)
+			return domain.JobPage{}, fmt.Errorf("authorize job list: %w", err)
 		}
-		jobs = append(jobs, job)
-	}
-	if err = rows.Err(); err != nil {
-		return domain.JobPage{}, fmt.Errorf("iterate jobs: %w", err)
-	}
-	page := domain.JobPage{Jobs: jobs}
-	if len(jobs) > options.Limit {
-		last := jobs[options.Limit-1]
-		page.Jobs = jobs[:options.Limit]
-		page.NextCursor = &domain.JobCursor{CreatedAt: last.CreatedAt, ID: last.ID}
-	}
+		if !authorized {
+			return domain.JobPage{}, domain.ErrForbidden
+		}
+		rows, err := tx.Query(ctx, jobListQuery(options.Confidence), principal.Issuer, principal.Subject, namespace, options.Phase, beforeTime, beforeID, options.Limit+1, options.Outcome, options.OwnerPrincipalID, options.CompletedFrom, options.CompletedBefore, options.CreatedBefore, options.JobID, options.Confidence)
+		if err != nil {
+			return domain.JobPage{}, fmt.Errorf("list jobs: %w", err)
+		}
+		defer rows.Close()
+		jobs := make([]domain.Job, 0, options.Limit+1)
+		for rows.Next() {
+			job, scanErr := scanJob(rows)
+			if scanErr != nil {
+				return domain.JobPage{}, fmt.Errorf("scan job: %w", scanErr)
+			}
+			jobs = append(jobs, job)
+		}
+		if err = rows.Err(); err != nil {
+			return domain.JobPage{}, fmt.Errorf("iterate jobs: %w", err)
+		}
+		page := domain.JobPage{Jobs: jobs, AsOf: snapshotTime}
+		if len(jobs) > options.Limit {
+			last := jobs[options.Limit-1]
+			page.Jobs = jobs[:options.Limit]
+			page.NextCursor = &domain.JobCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		}
 
-	return page, nil
+		return page, nil
+	})
 }
 
 func validateSubmission(submission domain.JobSubmission) error {
@@ -551,7 +527,7 @@ func insertJob(
 		partition = placement.partition
 	}
 
-	job, err := scanJob(tx.QueryRow(ctx, `
+	_, err = tx.Exec(ctx, `
 		INSERT INTO jobs (
 			id, namespace_id, owner_principal_id, name, labels, phase,
 			desired_state, placement_target, placement_partition,
@@ -561,26 +537,18 @@ func insertJob(
 			$1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12::jsonb,
 			$13, $14, $15::jsonb
 		)
-		RETURNING
-			id::text, $16::text, name, labels::text, phase, desired_state,
-			COALESCE(outcome, ''),
-			placement_target, COALESCE(placement_partition, ''),
-			workload_digest, request_digest, revision, created_at, updated_at,
-			target_id::text, target_generation_id::text, $17::text,
-			''::text, ''::text, ''::text, ''::text, ''::text, NULL::timestamptz,
-			''::text, NULL::timestamptz
 	`, jobID, authorization.namespaceID, authorization.principalID,
 		submission.Name, string(encodedLabels), domain.JobPhaseAccepted,
 		domain.JobDesiredStateRun, submission.Target, partition,
 		submission.WorkloadDigest, submission.RequestDigest,
 		string(submission.RequestDocument), placement.targetID,
-		placement.targetGenerationID, string(encodedArtifactStores), submission.Namespace, placement.executionBackend,
-	))
+		placement.targetGenerationID, string(encodedArtifactStores),
+	)
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("insert job: %w", err)
 	}
 
-	return job, nil
+	return getJobByID(ctx, tx, authorization.namespaceID, jobID)
 }
 
 func completeIdempotency(
@@ -668,35 +636,8 @@ func getJobByID(
 	namespaceID string,
 	jobID string,
 ) (domain.Job, error) {
-	return scanJob(tx.QueryRow(ctx, `
-		SELECT
-			j.id::text, n.name, j.name, j.labels::text, j.phase,
-			j.desired_state, COALESCE(j.outcome, ''), j.placement_target,
-			COALESCE(j.placement_partition, ''), j.workload_digest,
-			j.request_digest, j.revision, j.created_at, j.updated_at,
-			COALESCE(j.target_id::text, ''), COALESCE(j.target_generation_id::text, ''),
-			COALESCE(tg.execution_backend, ''),
-			COALESCE(current_execution.native_id, ''),
-			COALESCE(current_execution.native_backend, ''),
-			COALESCE(current_execution.native_state, ''),
-			COALESCE(current_execution.native_reason, ''),
-			COALESCE(current_execution.native_cluster, ''),
-			current_execution.native_observed_at,
-			COALESCE(current_execution.observation_confidence, ''),
-			current_execution.confidence_updated_at
-		FROM jobs AS j
-		JOIN namespaces AS n ON n.id = j.namespace_id
-		LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
-		LEFT JOIN LATERAL (
-			SELECT e.native_id, e.native_backend, e.native_state,
-				e.native_reason, e.native_cluster, e.native_observed_at,
-				e.observation_confidence, e.confidence_updated_at
-			FROM runs AS current_run
-			JOIN executions AS e ON e.run_id = current_run.id
-			WHERE current_run.job_id = j.id
-			ORDER BY current_run.run_number DESC LIMIT 1
-		) AS current_execution ON true
-		WHERE j.namespace_id = $1 AND j.id = $2
+	return scanJob(tx.QueryRow(ctx, jobSelect+`
+        WHERE j.namespace_id = $1 AND j.id = $2
 	`, namespaceID, jobID))
 }
 
@@ -710,6 +651,8 @@ func scanJob(row rowScanner) (domain.Job, error) {
 	var schedulerBackend, schedulerState, schedulerReason, schedulerCluster string
 	var schedulerObservedAt *time.Time
 	var confidenceUpdatedAt *time.Time
+	var owner domain.JobOwner
+	var run domain.RunReference
 	err := row.Scan(
 		&job.ID, &job.Namespace, &job.Name, &labels, &job.Phase,
 		&job.DesiredState, &job.Outcome, &job.Target, &job.Partition,
@@ -718,6 +661,11 @@ func scanJob(row rowScanner) (domain.Job, error) {
 		&job.TargetGenerationID, &job.ExecutionBackend, &job.NativeID,
 		&schedulerBackend, &schedulerState, &schedulerReason, &schedulerCluster,
 		&schedulerObservedAt, &job.ObservationConfidence, &confidenceUpdatedAt,
+		&job.NamespaceID, &job.Imported, &owner.ID, &owner.Issuer, &owner.Subject, &owner.DisplayName,
+		&job.Lifecycle.StartedAt, &job.Lifecycle.StartedRecordedAt, &job.Lifecycle.StartedProvenance,
+		&job.Lifecycle.CompletedAt, &job.Lifecycle.CompletedRecordedAt, &job.Lifecycle.CompletedProvenance,
+		&run.ID, &run.Number, &run.ExecutionID, &job.Group.CollectionID, &job.Group.CollectionIndex,
+		&job.Group.GraphID, &job.Group.GraphIndex, &job.Group.GraphDisposition, &job.AsOf,
 	)
 	if err != nil {
 		return domain.Job{}, err
@@ -728,6 +676,18 @@ func scanJob(row rowScanner) (domain.Job, error) {
 	if len(job.Labels) == 0 {
 		job.Labels = nil
 	}
+	if !job.Imported {
+		job.Owner = &owner
+	}
+	if run.ID != "" {
+		job.CurrentRun = &run
+	}
+	for _, timestamp := range []*time.Time{job.Lifecycle.StartedAt, job.Lifecycle.StartedRecordedAt, job.Lifecycle.CompletedAt, job.Lifecycle.CompletedRecordedAt} {
+		if timestamp != nil {
+			*timestamp = timestamp.UTC()
+		}
+	}
+	job.AsOf = job.AsOf.UTC()
 	job.CreatedAt = job.CreatedAt.UTC()
 	job.UpdatedAt = job.UpdatedAt.UTC()
 	if confidenceUpdatedAt != nil {

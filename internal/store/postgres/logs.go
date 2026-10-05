@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/jackc/pgx/v5"
@@ -19,6 +20,9 @@ func (store *Store) CommitLogChunk(
 	identity domain.AgentIdentity,
 	chunk domain.LogChunk,
 ) (bool, error) {
+	if chunk.Sequence < 1 || chunk.ByteOffset < 0 || chunk.ByteLength < 0 || chunk.ByteLength > 262144 || (chunk.Stream != "stdout" && chunk.Stream != "stderr") || !manifestChecksumPattern.MatchString(chunk.Checksum) || (chunk.ByteLength == 0 && !chunk.Complete) || chunk.Truncated && !chunk.Complete {
+		return false, domain.ErrConflict
+	}
 	replayed, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (bool, error) {
 		var namespace, jobID, assignedAgent, phase, approvedStore string
 		var approvedVersion int64
@@ -88,6 +92,10 @@ func (store *Store) CommitLogChunk(
 			}
 
 			return true, nil
+		}
+		// Preserve byte-equivalent replays accepted before the overflow guard.
+		if chunk.ByteOffset > math.MaxInt64-chunk.ByteLength {
+			return false, domain.ErrConflict
 		}
 		if state != "capturing" || storeName != chunk.StoreName || storeVersion != chunk.StoreVersion {
 			return false, domain.ErrConflict
@@ -217,8 +225,18 @@ func (store *Store) GetJobLogs(
 	principal domain.Principal,
 	namespace, jobID string,
 ) ([]domain.LogStream, error) {
-	var authorized bool
-	if err := store.pool.QueryRow(ctx, `
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) ([]domain.LogStream, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityLogsRead)
+		if authErr != nil {
+			if principal.Delegation == nil && errors.Is(authErr, domain.ErrForbidden) {
+				return nil, domain.ErrNotFound
+			}
+			return nil, authErr
+		}
+		principal = authorization.canonical
+
+		var authorized bool
+		if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM jobs AS j
 			JOIN namespaces AS n ON n.id = j.namespace_id
@@ -227,12 +245,12 @@ func (store *Store) GetJobLogs(
 			WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND j.id = $4
 		)
 	`, principal.Issuer, principal.Subject, namespace, jobID).Scan(&authorized); err != nil {
-		return nil, fmt.Errorf("authorize job logs: %w", err)
-	}
-	if !authorized {
-		return nil, domain.ErrNotFound
-	}
-	rows, err := store.pool.Query(ctx, `
+			return nil, fmt.Errorf("authorize job logs: %w", err)
+		}
+		if !authorized {
+			return nil, domain.ErrNotFound
+		}
+		rows, err := tx.Query(ctx, `
 		SELECT e.id::text, r.run_number, stream.stream, stream.state,
 			stream.byte_length, stream.truncated,
 			chunk.sequence, chunk.store_name, chunk.store_version,
@@ -247,50 +265,51 @@ func (store *Store) GetJobLogs(
 		WHERE j.id = $1
 		ORDER BY r.run_number, e.created_at, stream.stream, chunk.sequence
 	`, jobID)
-	if err != nil {
-		return nil, fmt.Errorf("query job logs: %w", err)
-	}
-	defer rows.Close()
-	streams := make(map[string]*domain.LogStream)
-	var order []string
-	for rows.Next() {
-		var chunk domain.LogChunk
-		var streamState string
-		var runNumber int
-		var streamLength int64
-		var truncated bool
-		if err = rows.Scan(
-			&chunk.ExecutionID, &runNumber, &chunk.Stream, &streamState,
-			&streamLength, &truncated, &chunk.Sequence, &chunk.StoreName,
-			&chunk.StoreVersion, &chunk.ObjectKey, &chunk.ByteOffset,
-			&chunk.ByteLength, &chunk.Checksum, &chunk.CapturedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan job log manifest: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("query job logs: %w", err)
 		}
-		key := chunk.ExecutionID + "\x00" + chunk.Stream
-		stream, found := streams[key]
-		if !found {
-			stream = &domain.LogStream{
-				ExecutionID: chunk.ExecutionID, RunNumber: runNumber, Stream: chunk.Stream,
-				State: streamState, ByteLength: streamLength, Truncated: truncated,
+		defer rows.Close()
+		streams := make(map[string]*domain.LogStream)
+		var order []string
+		for rows.Next() {
+			var chunk domain.LogChunk
+			var streamState string
+			var runNumber int
+			var streamLength int64
+			var truncated bool
+			if err = rows.Scan(
+				&chunk.ExecutionID, &runNumber, &chunk.Stream, &streamState,
+				&streamLength, &truncated, &chunk.Sequence, &chunk.StoreName,
+				&chunk.StoreVersion, &chunk.ObjectKey, &chunk.ByteOffset,
+				&chunk.ByteLength, &chunk.Checksum, &chunk.CapturedAt,
+			); err != nil {
+				return nil, fmt.Errorf("scan job log manifest: %w", err)
 			}
-			streams[key] = stream
-			order = append(order, key)
+			key := chunk.ExecutionID + "\x00" + chunk.Stream
+			stream, found := streams[key]
+			if !found {
+				stream = &domain.LogStream{
+					ExecutionID: chunk.ExecutionID, RunNumber: runNumber, Stream: chunk.Stream,
+					State: streamState, ByteLength: streamLength, Truncated: truncated,
+				}
+				streams[key] = stream
+				order = append(order, key)
+			}
+			stream.Chunks = append(stream.Chunks, chunk)
 		}
-		stream.Chunks = append(stream.Chunks, chunk)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate job log manifest: %w", err)
-	}
-	sort.SliceStable(order, func(first, second int) bool {
-		return streams[order[first]].RunNumber < streams[order[second]].RunNumber ||
-			streams[order[first]].RunNumber == streams[order[second]].RunNumber &&
-				streams[order[first]].Stream < streams[order[second]].Stream
-	})
-	result := make([]domain.LogStream, 0, len(order))
-	for _, key := range order {
-		result = append(result, *streams[key])
-	}
+		if err = rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate job log manifest: %w", err)
+		}
+		sort.SliceStable(order, func(first, second int) bool {
+			return streams[order[first]].RunNumber < streams[order[second]].RunNumber ||
+				streams[order[first]].RunNumber == streams[order[second]].RunNumber &&
+					streams[order[first]].Stream < streams[order[second]].Stream
+		})
+		result := make([]domain.LogStream, 0, len(order))
+		for _, key := range order {
+			result = append(result, *streams[key])
+		}
 
-	return result, nil
+		return result, nil
+	})
 }

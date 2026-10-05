@@ -274,23 +274,34 @@ func (store *Store) GetCollection(
 	principal domain.Principal,
 	namespace, collectionID string,
 ) (domain.Collection, error) {
-	collection, err := scanCollection(store.pool.QueryRow(ctx, collectionSelect+`
+	return inReadTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.Collection, error) {
+		authorization, authErr := authorizeNamespace(ctx, tx, principal, namespace, domain.CapabilityGroupsRead)
+		if authErr != nil {
+			if principal.Delegation == nil && errors.Is(authErr, domain.ErrForbidden) {
+				return domain.Collection{}, domain.ErrNotFound
+			}
+			return domain.Collection{}, authErr
+		}
+		principal = authorization.canonical
+
+		collection, err := scanCollection(tx.QueryRow(ctx, collectionSelect+`
 		JOIN authorized_memberships AS m ON m.namespace_id = n.id
 		JOIN principals AS p ON p.id = m.principal_id
 		WHERE p.issuer = $1 AND p.subject = $2 AND n.name = $3 AND c.id = $4
 		GROUP BY c.id, n.name
 	`, principal.Issuer, principal.Subject, namespace, collectionID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.Collection{}, domain.ErrNotFound
-	}
-	if err != nil {
-		return domain.Collection{}, fmt.Errorf("get collection: %w", err)
-	}
-	if loadErr := loadCollectionItems(ctx, store.pool, &collection); loadErr != nil {
-		return domain.Collection{}, loadErr
-	}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Collection{}, domain.ErrNotFound
+		}
+		if err != nil {
+			return domain.Collection{}, fmt.Errorf("get collection: %w", err)
+		}
+		if loadErr := loadCollectionItems(ctx, tx, &collection); loadErr != nil {
+			return domain.Collection{}, loadErr
+		}
 
-	return collection, nil
+		return collection, nil
+	})
 }
 
 const collectionSelect = `
@@ -421,18 +432,8 @@ func getJobWithQuerier(
 ) (domain.Job, error) {
 	// Collection loading already authorized the namespace or occurs inside an
 	// authorized transaction; retain the common scanner shape used by GetJob.
-	return scanJob(querier.QueryRow(ctx, `
-		SELECT
-			j.id::text, $1::text, j.name, j.labels::text, j.phase,
-			j.desired_state, COALESCE(j.outcome, ''), j.placement_target,
-			COALESCE(j.placement_partition, ''), j.workload_digest,
-			j.request_digest, j.revision, j.created_at, j.updated_at,
-			COALESCE(j.target_id::text, ''), COALESCE(j.target_generation_id::text, ''),
-			COALESCE(tg.execution_backend, ''), '', '', '', '', '', NULL::timestamptz,
-			'', NULL::timestamptz
-		FROM jobs AS j
-		LEFT JOIN target_generations AS tg ON tg.id = j.target_generation_id
-		WHERE j.id = $2
+	return scanJob(querier.QueryRow(ctx, jobSelect+`
+        WHERE n.name = $1 AND j.id = $2
 	`, namespace, jobID))
 }
 
