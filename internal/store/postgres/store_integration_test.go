@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1048,6 +1049,7 @@ func testExecutionLifecycle(
 		CapturedAt: time.Now().UTC(), Complete: true,
 		DocumentDigest: "sha256:" + strings.Repeat("b", 64), Document: logDocument,
 	}
+	testLegacyOverflowReplay(ctx, t, store, identity, terminalChunk)
 	replayedLog, err := store.CommitLogChunk(ctx, identity, terminalChunk)
 	if err != nil || replayedLog {
 		t.Fatalf("CommitLogChunk(out of order) = %t, %v", replayedLog, err)
@@ -1564,5 +1566,40 @@ func assertTableCount(
 	}
 	if count != want {
 		t.Fatalf("%s count = %d, want %d", table, count, want)
+	}
+}
+
+// A pre-upgrade out-of-order chunk may exceed the newer addition bound. Its
+// immutable receipt must still replay, while a new publication is rejected.
+func testLegacyOverflowReplay(ctx context.Context, t *testing.T, store *Store, identity domain.AgentIdentity, template domain.LogChunk) {
+	t.Helper()
+	chunk := template
+	chunk.ByteOffset = math.MaxInt64
+	if replayed, err := store.CommitLogChunk(ctx, identity, chunk); !errors.Is(err, domain.ErrConflict) || replayed {
+		t.Fatalf("new overflow = %v, %v", replayed, err)
+	}
+	_, err := store.pool.Exec(ctx, `INSERT INTO log_streams
+  (namespace_id, execution_id, agent_id, stream, store_name, store_version)
+  VALUES ($1,$2,$3,$4,$5,$6)`, identity.NamespaceID, chunk.ExecutionID, chunk.AgentID, chunk.Stream, chunk.StoreName, chunk.StoreVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.pool.Exec(ctx, `INSERT INTO log_chunks
+  (namespace_id, execution_id, agent_id, stream, sequence, store_name, store_version,
+   object_key, byte_offset, byte_length, checksum, captured_at, complete, truncated, document_digest, document)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb)`,
+		identity.NamespaceID, chunk.ExecutionID, chunk.AgentID, chunk.Stream, chunk.Sequence, chunk.StoreName, chunk.StoreVersion,
+		chunk.ObjectKey, chunk.ByteOffset, chunk.ByteLength, chunk.Checksum, chunk.CapturedAt, chunk.Complete, chunk.Truncated, chunk.DocumentDigest, string(chunk.Document))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed, replayErr := store.CommitLogChunk(ctx, identity, chunk); replayErr != nil || !replayed {
+		t.Fatalf("legacy overflow replay = %v, %v", replayed, replayErr)
+	}
+	if _, err = store.pool.Exec(ctx, `DELETE FROM log_chunks WHERE execution_id=$1 AND stream=$2`, chunk.ExecutionID, chunk.Stream); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.pool.Exec(ctx, `DELETE FROM log_streams WHERE execution_id=$1 AND stream=$2`, chunk.ExecutionID, chunk.Stream); err != nil {
+		t.Fatal(err)
 	}
 }

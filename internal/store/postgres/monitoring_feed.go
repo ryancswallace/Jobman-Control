@@ -86,14 +86,20 @@ func (store *Store) readMonitoringCheckpoint(ctx context.Context, tx pgx.Tx, pri
 	if len(store.tokenKey) < 32 {
 		return result, 0, 0, domain.ErrAuthorizationUnavailable
 	}
+	// This must be the first statement in the repeatable-read transaction:
+	// capture the source clock when its snapshot is established, not at BEGIN
+	// or after authorization has already fixed an older snapshot.
+	if err := tx.QueryRow(ctx, `SELECT statement_timestamp()`).Scan(&result.AsOf); err != nil {
+		return result, 0, 0, fmt.Errorf("capture monitoring snapshot clock: %w", err)
+	}
 	if err := authorizeMonitoringService(ctx, tx, principal); err != nil {
 		return result, 0, 0, err
 	}
-	err := tx.QueryRow(ctx, `SELECT identity.id::text,recovery.restore_epoch,transaction_timestamp(),state.head_position,state.retired_through,state.retention_seconds,
+	err := tx.QueryRow(ctx, `SELECT identity.id::text,recovery.restore_epoch,state.head_position,state.retired_through,state.retention_seconds,
  (SELECT count(*) FROM outbox WHERE topic='monitoring.job_terminal.v1' AND published_at IS NULL AND namespace_id=ANY($1::uuid[])),
  (SELECT min(created_at) FROM outbox WHERE topic='monitoring.job_terminal.v1' AND published_at IS NULL AND namespace_id=ANY($1::uuid[]))
  FROM monitoring_feed_state AS state CROSS JOIN control_instance AS identity CROSS JOIN service_recovery_state AS recovery
- WHERE state.singleton AND identity.singleton AND recovery.singleton`, principal.Delegation.NamespaceIDs).Scan(&result.ControlInstanceID, &result.RecoveryEpoch, &result.AsOf, &head, &floor, &result.RetentionSeconds, &result.BacklogCount, &result.OldestUnpublishedRecordedAt)
+ WHERE state.singleton AND identity.singleton AND recovery.singleton`, principal.Delegation.NamespaceIDs).Scan(&result.ControlInstanceID, &result.RecoveryEpoch, &head, &floor, &result.RetentionSeconds, &result.BacklogCount, &result.OldestUnpublishedRecordedAt)
 	if err != nil {
 		return result, 0, 0, fmt.Errorf("read monitoring checkpoint: %w", err)
 	}

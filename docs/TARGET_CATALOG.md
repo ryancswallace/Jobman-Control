@@ -6,8 +6,11 @@ uses the complete-count bounded catalog instead of the legacy 1000-row list.
 
 `GET /v1/namespaces/{namespace}/target-catalog` accepts `limit` from 1 to 200
 (default 100), optional RFC3339 `createdBefore`, and opaque `pageToken`. The first
-page defaults the inclusive creation cutoff to its real source transaction time.
-The cursor preserves that cutoff and the last emitted `(createdAt, id)` tuple.
+page uses the latest creation timestamp visible in its database snapshot as the
+inclusive cutoff (the Unix epoch for an empty catalog). An explicit cutoff is
+clamped to that visible watermark. The cursor preserves the returned effective
+cutoff and the last emitted `(createdAt, id)` tuple; clients continuing with an
+explicit `createdBefore` must use the returned value, not their original request.
 Rows use descending timestamp/UUID ordering, backed by migration 19's namespace
 creation index. A changed explicit cutoff with an existing cursor is rejected.
 Names, current generation and state never determine cursor position.
@@ -21,7 +24,10 @@ repeatable-read transaction. The item array is capped at 2 MiB of encoded JSON;
 a byte-limited page can contain fewer than `limit` items and still have a cursor.
 Each request reauthorizes the represented user and service; cursor possession
 never grants access. Live configuration can change between pages, while the
-creation cutoff excludes later targets.
+creation cutoff excludes targets that commit after the first page, even when
+their inserting transaction began earlier. Migration 22 assigns creation times
+through a per-namespace clock row locked until commit; timestamps advance
+monotonically and cannot be backdated or moved into another namespace.
 
 Each item includes actual target `id`, `name`, `kind`, `state`, decimal `revision`,
 `createdAt`, `updatedAt`, and the selected immutable `generation`. Generation
@@ -58,3 +64,14 @@ remain compatible. The write path explicitly binds log-store versions as bigint,
 so a valid 64-bit mapping version cannot be accidentally narrowed by SQL literal
 type inference. Restore/rollback follows the existing controlled schema and
 recovery-epoch procedure.
+
+Migration 22 adds and backfills `target_catalog_clocks` without changing existing
+target IDs, namespaces, timestamps, generations, or configuration. New target
+inserts serialize briefly per namespace and receive their creation timestamp
+from the database. Target creation time and namespace are immutable afterward.
+Take a PostgreSQL backup, stop old Control writers, apply migrations with the
+new binary, verify exact schema readiness, and restart catalog traversals from
+page one. The migration takes a table lock while initializing the clock from
+existing targets. It never deletes targets or rewrites an applied migration.
+Old binaries refuse the newer ledger; rollback requires the normal coordinated
+binary/database restore and recovery-epoch procedure, not dropping the trigger.

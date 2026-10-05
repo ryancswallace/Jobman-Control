@@ -65,7 +65,8 @@ Each item contains `eventId` (the original stable UUID), `position`, `namespaceI
 no job or namespace name, command, label, path, identity display name, or log data.
 The observed completion value is the existing factual lifecycle timestamp and
 may originate from a Control cancellation transition; `recordedAt` is the actual
-statement time that recorded this transition. An absent run is not run zero.
+database clock time at which the AFTER trigger records this transition, after
+any row-lock wait. It is neither transaction start nor statement start time. An absent run is not run zero.
 
 Pages seek the `(namespace_id, position)` index separately for at most 320
 asserted namespaces, with at most `limit + 1` candidates per namespace, then
@@ -127,6 +128,11 @@ from the restored backup. Consumers must record a monitoring gap and deduplicate
 by deployment UUID, Control instance UUID, and original event UUID, preserving
 sufficient tombstones for their replay/recovery policy.
 
+The checkpoint captures `asOf` with its first snapshot-taking statement, before
+authorization or feed queries. All those queries share that repeatable-read
+snapshot. It does not reuse an earlier transaction start time or read a later
+clock after the snapshot was already fixed.
+
 At subscription activation, capture both `headCursor` and `asOf`. Match subsequent
 eligible feed events whose `recordedAt` is after that source-clock boundary.
 An older unpublished backlog is then excluded, while an earlier observed
@@ -170,3 +176,12 @@ before upgrading. Old binaries fail exact schema compatibility checks after the
 forward migration. Roll back binaries only with the coordinated database restore
 procedure; advance recovery epoch and explicitly reconcile all consumers. Do not
 edit an applied migration or pretend a restored snapshot retained lost events.
+
+Migration 22 replaces the terminal trigger function to timestamp the actual
+post-lock observation. Existing event IDs, payloads, and feed positions are
+retained; historical records keep their timestamps and are not republished. It also installs
+directory-binding authorization invalidation and the target-catalog creation
+clock described in [target monitoring](TARGET_CATALOG.md). Back up PostgreSQL,
+stop old writers, apply the forward migration with the new binary, and verify
+readiness before restarting. Existing authenticated feed cursors remain valid;
+rollback still requires coordinated database restore and consumer recovery.

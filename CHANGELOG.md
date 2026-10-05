@@ -5,6 +5,19 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Fixed
+
+- Advance authorization versions when a directory binding changes retained
+  permissions, and fence target pagination against late-committing creations.
+- Timestamp monitoring checkpoints at snapshot acquisition and terminal events
+  after row-lock waits. Migration 22 preserves existing rows and event identities.
+
+- Preserve immutable log-chunk replays across the manifest overflow validation
+  upgrade while continuing to reject new overflowing publications.
+- Bound delegation-key startup registration, document unavailable delegated
+  authority responses, and reject synthetic fixture/log roots that overlap
+  through either direct paths or symbolic-link ancestors.
+
 ### Added
 
 - Bounded authorized run catalogs and run detail for historical log, artifact and

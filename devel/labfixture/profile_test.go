@@ -281,3 +281,32 @@ func TestSecondaryRootsReceiptsAndDirectoryProfileAreImmutable(t *testing.T) {
 		t.Fatal("changed directory profile accepted")
 	}
 }
+
+func TestPrimaryPreparationRejectsOverlappingRoots(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(base, "control")
+	if err = os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, logs := range []string{root, filepath.Join(root, "logs"), base} {
+		if err = prepare(t.Context(), root, "unread-input", "unread-database", logs); err == nil || !strings.Contains(err.Error(), "separate directory") {
+			t.Fatalf("overlapping roots did not fail preflight: %v", err)
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	alias := filepath.Join(base, "alias")
+	if err = os.Symlink(root, alias); err != nil {
+		t.Fatal(err)
+	}
+	if separateFixtureDirectories(root, filepath.Join(alias, "new-logs")) {
+		t.Fatal("symlink ancestor bypassed root separation")
+	}
+	if !separateFixtureDirectories(root, filepath.Join(base, "independent-logs")) {
+		t.Fatal("independent new log directory rejected")
+	}
+}

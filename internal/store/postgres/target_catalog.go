@@ -40,8 +40,13 @@ func (store *Store) ListTargetCatalog(ctx context.Context, principal domain.Prin
 		if err != nil {
 			return result, err
 		}
-		result.CreatedBefore = result.AsOf
-		if options.CreatedBefore != nil {
+		// A visible creation watermark, together with the transaction-serialized
+		// creation clock, excludes inserts that commit after this snapshot.
+		// A wall-clock cutoff alone admits older, still-uncommitted inserts.
+		if cutoffErr := tx.QueryRow(ctx, `SELECT COALESCE(max(created_at),'epoch'::timestamptz) FROM targets WHERE namespace_id=$1`, authorization.namespaceID).Scan(&result.CreatedBefore); cutoffErr != nil {
+			return result, cutoffErr
+		}
+		if options.CreatedBefore != nil && options.CreatedBefore.Before(result.CreatedBefore) {
 			result.CreatedBefore = options.CreatedBefore.UTC()
 		}
 		if countErr := tx.QueryRow(ctx, `SELECT count(*) FROM targets WHERE namespace_id=$1 AND created_at<=$2`, authorization.namespaceID, result.CreatedBefore).Scan(&result.Total); countErr != nil {

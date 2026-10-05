@@ -122,6 +122,7 @@ paths:
           in: query
           schema: {type: string, format: date-time}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized complete summary.
           content:
@@ -150,6 +151,7 @@ paths:
           in: query
           schema: {type: string, maxLength: 48}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Current principal and one authorized namespace page.
           content:
@@ -405,6 +407,7 @@ paths:
           serviceMutualTLS: []
       operationId: listTargets
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Up to 1,000 name-ordered targets.
           content:
@@ -430,6 +433,7 @@ paths:
           serviceMutualTLS: []
       operationId: getTarget
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Target and current immutable generation.
           content:
@@ -580,6 +584,7 @@ paths:
           description: Inclusive stable creation cutoff, separate from the keyset cursor.
           schema: {type: string, format: date-time}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized page of shared jobs.
           content:
@@ -641,6 +646,7 @@ paths:
           in: query
           schema: {enum: [individual, slurm-array]}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized bounded source snapshot.
           content:
@@ -696,6 +702,7 @@ paths:
       operationId: getCollection
       description: Return the aggregate collection state and ordered child job snapshots.
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Current authorized collection snapshot.
           content:
@@ -727,6 +734,7 @@ paths:
           in: query
           schema: {type: string, format: date-time}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized bounded source snapshot.
           content:
@@ -781,6 +789,7 @@ paths:
           serviceMutualTLS: []
       operationId: getGraph
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Aggregate graph state, ordered nodes, and dependency satisfaction.
           content:
@@ -806,6 +815,7 @@ paths:
       description: >-
         Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized bounded source snapshot.
           content:
@@ -839,6 +849,7 @@ paths:
           in: query
           schema: {type: integer, minimum: -1, maximum: 9999, default: -1}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized bounded source snapshot.
           content:
@@ -865,6 +876,7 @@ paths:
       description: >-
         Source snapshot with complete counts, bounded children, and source-computed dependency states. Summary documents omit child arrays.
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized bounded source snapshot.
           content:
@@ -898,6 +910,7 @@ paths:
           in: query
           schema: {type: integer, minimum: -1, maximum: 9999, default: -1}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized bounded source snapshot.
           content:
@@ -937,6 +950,7 @@ paths:
           in: query
           schema: {type: string, maxLength: 256}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized bounded source snapshot.
           content:
@@ -974,6 +988,7 @@ paths:
           in: query
           schema: {type: integer, minimum: 1, maximum: 500, default: 100}
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Authorized bounded source snapshot.
           content:
@@ -1064,6 +1079,7 @@ paths:
           serviceMutualTLS: []
       operationId: getJob
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Current authorized job snapshot.
           content:
@@ -1186,6 +1202,7 @@ paths:
         Return authorized logical log metadata. Bytes remain in the target-approved
         filesystem artifact store and physical mount paths are never returned.
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Current immutable log chunks and stream completeness.
           content:
@@ -1212,6 +1229,7 @@ paths:
         target-approved artifact store and physical mount paths are never
         returned.
       responses:
+        "503": {$ref: "#/components/responses/AuthorizationUnavailable"}
         "200":
           description: Immutable output artifacts published by job executions.
           content:
@@ -1555,6 +1573,11 @@ components:
           schema: {$ref: "#/components/schemas/Error"}
     Unauthenticated:
       description: No valid identity was established.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    AuthorizationUnavailable:
+      description: authorization_unavailable; current directory or delegation authority cannot be verified.
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}

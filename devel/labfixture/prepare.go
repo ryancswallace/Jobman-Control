@@ -26,7 +26,7 @@ func prepare(ctx context.Context, root, inputPath, databasePath, logRoot string)
 }
 
 func prepareProfile(ctx context.Context, root, inputPath, databasePath, logRoot, directoryRoot string, profile fixtureProfile) error {
-	if profile.validate() != nil || profile.secondary() && (runtime.GOOS == "windows" || !separateFixtureDirectories(root, directoryRoot) || !separateFixtureDirectories(root, logRoot) || !separateFixtureDirectories(directoryRoot, logRoot)) {
+	if profile.validate() != nil || !separateFixtureDirectories(root, logRoot) || profile.secondary() && (runtime.GOOS == "windows" || !separateFixtureDirectories(root, directoryRoot) || !separateFixtureDirectories(root, logRoot) || !separateFixtureDirectories(directoryRoot, logRoot)) {
 		return errors.New("invalid fixed profile or separate directory export")
 	}
 	var input fixtureInput

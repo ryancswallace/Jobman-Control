@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 )
 
@@ -73,6 +74,11 @@ func separateFixtureDirectories(root, directoryRoot string) bool {
 	if !filepath.IsAbs(root) || !filepath.IsAbs(directoryRoot) || filepath.Clean(root) != root || filepath.Clean(directoryRoot) != directoryRoot || root == "/" || directoryRoot == "/" {
 		return false
 	}
+	root, rootErr := resolveFixtureDirectory(root)
+	directoryRoot, directoryErr := resolveFixtureDirectory(directoryRoot)
+	if rootErr != nil || directoryErr != nil {
+		return false
+	}
 	rel, e := filepath.Rel(root, directoryRoot)
 	back, b := filepath.Rel(directoryRoot, root)
 	return e == nil && b == nil && rel != "." && back != "." && isOutside(rel) && isOutside(back)
@@ -80,4 +86,22 @@ func separateFixtureDirectories(root, directoryRoot string) bool {
 
 func isOutside(relative string) bool {
 	return relative == ".." || len(relative) > 3 && relative[:3] == ".."+string(filepath.Separator)
+}
+
+// Resolve existing ancestors as well as an optional not-yet-created leaf.
+func resolveFixtureDirectory(path string) (string, error) {
+	if _, err := os.Lstat(path); err == nil {
+		return filepath.EvalSymlinks(path)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	parentPath := filepath.Dir(path)
+	if parentPath == path {
+		return "", errors.New("fixture filesystem root does not exist")
+	}
+	parent, err := resolveFixtureDirectory(parentPath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(parent, filepath.Base(path)), nil
 }

@@ -107,7 +107,7 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		if !x509.NewCertPool().AppendCertsFromPEM(delegationCA) {
 			return errors.New("delegation client CA contains no certificates")
 		}
-		if registerErr := store.RegisterDelegationKeys(ctx, keys); registerErr != nil {
+		if registerErr := store.RegisterDelegationKeys(startupContext, keys); registerErr != nil {
 			return fmt.Errorf("apply delegation service registry: %w", registerErr)
 		}
 		delegationAuthenticator = &auth.DelegationAuthenticator{Registry: store}

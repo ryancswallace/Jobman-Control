@@ -20,7 +20,7 @@ func (store *Store) CommitLogChunk(
 	identity domain.AgentIdentity,
 	chunk domain.LogChunk,
 ) (bool, error) {
-	if chunk.Sequence < 1 || chunk.ByteOffset < 0 || chunk.ByteLength < 0 || chunk.ByteLength > 262144 || chunk.ByteOffset > math.MaxInt64-chunk.ByteLength || (chunk.Stream != "stdout" && chunk.Stream != "stderr") || !manifestChecksumPattern.MatchString(chunk.Checksum) || (chunk.ByteLength == 0 && !chunk.Complete) || chunk.Truncated && !chunk.Complete {
+	if chunk.Sequence < 1 || chunk.ByteOffset < 0 || chunk.ByteLength < 0 || chunk.ByteLength > 262144 || (chunk.Stream != "stdout" && chunk.Stream != "stderr") || !manifestChecksumPattern.MatchString(chunk.Checksum) || (chunk.ByteLength == 0 && !chunk.Complete) || chunk.Truncated && !chunk.Complete {
 		return false, domain.ErrConflict
 	}
 	replayed, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (bool, error) {
@@ -92,6 +92,10 @@ func (store *Store) CommitLogChunk(
 			}
 
 			return true, nil
+		}
+		// Preserve byte-equivalent replays accepted before the overflow guard.
+		if chunk.ByteOffset > math.MaxInt64-chunk.ByteLength {
+			return false, domain.ErrConflict
 		}
 		if state != "capturing" || storeName != chunk.StoreName || storeVersion != chunk.StoreVersion {
 			return false, domain.ErrConflict
