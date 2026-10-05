@@ -29,6 +29,20 @@ as credentials.
 No API caller receives PostgreSQL credentials. Control never starts a process,
 invokes Slurm, opens SSH, or reads bulk artifact bytes.
 
+## Contributing namespace authority
+
+Current namespace authorization is the exact capability union of all active
+role contributions. Grants are independently revocable; no highest-role
+approximation or scheduled grant expiry is used. All namespace metadata queries
+read a deduplicated current-membership projection, so multiple roles never
+multiply result rows. Owner-dependent cancellation remains a separate resource
+check. See [the capability catalog and migration boundaries](AUTHORIZATION_UPGRADE.md).
+
+The initial grant foundation does not yet reconcile AD groups, verify account
+eligibility, enforce directory freshness, or accept delegated service assertions.
+Those integrations must be completed before an AD-managed Dashboard release.
+A manual grant is not evidence of direct AD membership.
+
 ## Boundaries and controls
 
 User authentication binds the exact OIDC issuer, audience, and stable subject.

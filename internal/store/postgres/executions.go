@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -572,7 +571,7 @@ func (store *Store) CancelJob(
 			return domain.Job{}, fmt.Errorf("lock job cancellation: %w", queryErr)
 		}
 		if ownerID != authorization.principalID &&
-			!slices.Contains([]string{domain.RoleOperator, domain.RoleNamespaceAdmin}, authorization.role) {
+			!authorization.permits(domain.CapabilityJobsCancelAny) {
 			return domain.Job{}, domain.ErrForbidden
 		}
 		replayedJobID, replayed, replayErr := reserveIdempotency(

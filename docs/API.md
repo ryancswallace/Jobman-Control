@@ -20,6 +20,35 @@ pre-release and uses `jobman.control/v1alpha1` documents plus the portable
 TLS is required for non-loopback OIDC deployments. Agent mTLS requires the
 service TLS certificate and agent CA configuration.
 
+## Principal discovery and contributing grants
+
+`GET /v1/me` returns the verified issuer/subject, existing principal UUID when
+known, and authorized namespace IDs/names. Each namespace includes sorted roles,
+its exact capability union, and a decimal-string `authorizationVersion`.
+`authorizationCheckedAt` is the database statement time; it does not establish
+AD verification or grant expiry. Unknown users get an empty `namespaces` array.
+Pass `limit` (default 50, maximum 200) and opaque `nextPageToken` as `pageToken`.
+Each page rechecks current grants; revoked namespaces disappear. Pagination is a
+live discovery view, so refresh it after access changes.
+
+Namespace administrators can `PUT` a `MembershipGrant` document to
+`/v1/namespaces/{namespace}/membership-grants/{grantID}`. Generate a new UUID for
+each independent manual contribution. The document uses the existing membership
+`spec.principal` and `spec.role` fields. Repeating that UUID with the same principal
+and role returns its current record; reusing it for another binding returns 409.
+`DELETE` tombstones that contribution and returns its `revokedAt` time. Repeated
+revocation is harmless; a revoked UUID cannot recreate access. These operations
+are idempotent by resource UUID and do not need an `Idempotency-Key`.
+
+Legacy `PUT /v1/namespaces/{namespace}/memberships` retains its existing response
+and key semantics. Its singular role describes only the legacy contribution, not
+the effective role set. Changing that role never removes independently assigned
+grants. Discovery is the authoritative way to inspect the effective role union.
+Manual routes cannot create or overwrite directory/legacy provenance.
+
+See [the authorization upgrade guide](AUTHORIZATION_UPGRADE.md) for the capability
+catalog, migration/rollback limits, and remaining directory integration work.
+
 ## Mutation semantics
 
 Client creation and cancellation requests require an `Idempotency-Key`.

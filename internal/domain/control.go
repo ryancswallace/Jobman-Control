@@ -402,6 +402,9 @@ type RecoveryState struct {
 // ControlRepository is the complete persistence boundary used by this slice.
 type ControlRepository interface {
 	JobRepository
+	CurrentPrincipal(context.Context, Principal, string, int) (PrincipalAccess, error)
+	PutMembershipGrant(context.Context, Principal, string, string, MembershipGrant) (ContributingGrant, error)
+	RevokeMembershipGrant(context.Context, Principal, string, string) (ContributingGrant, error)
 	PutMembership(context.Context, Principal, string, string, string, MembershipGrant) (CreateResult[Membership], error)
 	CreateTarget(context.Context, Principal, string, string, string, TargetSpec) (CreateResult[Target], error)
 	CreateTargetGeneration(context.Context, Principal, string, string, string, string, TargetGenerationChange) (CreateResult[Target], error)

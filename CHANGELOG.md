@@ -5,6 +5,15 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- Current-principal discovery with immutable namespace IDs, contributing roles,
+  exact capability unions, authorization revisions, and bounded pagination.
+- Independently revocable manual membership grants and an additive migration of
+  existing memberships to audited legacy contributions. Existing membership PUT
+  updates only its legacy contribution; all repository checks read the union.
+
+
 ## [0.1.1] - 2026-08-29
 
 ## [0.1.0] - 2026-08-29
