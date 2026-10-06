@@ -2,6 +2,7 @@ package devel_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -128,4 +129,84 @@ func readReleaseFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(contents)
+}
+
+// cspell:ignore NOSYSTEM pipefail
+// Exercise the workflow's actual local publication decision against a disposable
+// Git index. An untracked first formula must be published just like an update.
+func TestHomebrewPublicationDetectsFirstFormulaAndUpdates(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Homebrew publication runs on a Unix runner")
+	}
+	workflow := readReleaseFile(t, "../.github/workflows/publish-homebrew-formula.yml")
+	_, proposal, ok := strings.Cut(workflow, "      - name: Propose verified formula\n")
+	if !ok {
+		t.Fatal("missing formula proposal step")
+	}
+	_, script, ok := strings.Cut(proposal, "        run: |\n")
+	if !ok {
+		t.Fatal("missing formula proposal script")
+	}
+	decision, _, ok := strings.Cut(script, "          branch=")
+	if !ok {
+		t.Fatal("missing proposal branch boundary")
+	}
+	for _, test := range []struct {
+		name, previous string
+		changed        bool
+	}{
+		{"first formula", "", true},
+		{"new release", "old release\n", true},
+		{"already published", "https://example.invalid/releases/download/v1.2.3/\n", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			tap := filepath.Join(directory, "homebrew-tap")
+			generated := filepath.Join(directory, "generated-formula")
+			for _, path := range []string{filepath.Join(tap, "Formula"), generated} {
+				if err := os.MkdirAll(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			environment := []string{"PATH=" + os.Getenv("PATH"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "RELEASE_TAG=v1.2.3"}
+			runGit := func(args ...string) string {
+				t.Helper()
+				cmd := exec.CommandContext(t.Context(), "git", args...)
+				cmd.Dir, cmd.Env = tap, environment
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("git %v: %v: %s", args, err, output)
+				}
+				return string(output)
+			}
+			runGit("init", "--quiet")
+			if test.previous != "" {
+				if err := os.WriteFile(filepath.Join(tap, "Formula", "jobman-control.rb"), []byte(test.previous), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				runGit("add", "Formula/jobman-control.rb")
+			}
+			runGit("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "--allow-empty", "-m", "initial fixture")
+			if err := os.WriteFile(filepath.Join(generated, "jobman-control.rb"), []byte("https://example.invalid/releases/download/v1.2.3/\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.CommandContext(t.Context(), "bash", "-eu", "-o", "pipefail", "-c", decision+"\nprintf 'proposal-needed\n'\n")
+			cmd.Dir, cmd.Env = directory, environment
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("publication decision: %v: %s", err, output)
+			}
+			if changed := strings.Contains(string(output), "proposal-needed"); changed != test.changed {
+				t.Fatalf("proposal needed = %t, want %t; output: %s", changed, test.changed, output)
+			}
+			staged := strings.TrimSpace(runGit("diff", "--cached", "--name-only"))
+			if test.changed && staged != "Formula/jobman-control.rb" {
+				t.Fatalf("staged files = %q", staged)
+			}
+			if !test.changed && staged != "" {
+				t.Fatalf("unchanged formula staged as %q", staged)
+			}
+		})
+	}
 }

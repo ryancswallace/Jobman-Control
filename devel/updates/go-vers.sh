@@ -28,7 +28,8 @@ replace() {
 
 language_version=$(printf '%s\n' "${GO_VERS}" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
 printf '%s\n' "${GO_VERS}" > go.version
-replace "s/^go .*/go ${language_version}/" go.mod
+# The module directive uses a canonical patch version; linter/features use X.Y.
+replace "s/^go .*/go ${language_version}.0/" go.mod
 replace "s/^  go: \".*\"/  go: \"${language_version}\"/" .golangci.yml
 replace "s/^ARG GO_VERSION=.*/ARG GO_VERSION=${GO_VERS}/" Dockerfile .devcontainer/Dockerfile
 replace "s/^ARG GO_FEATURE_VERSION=.*/ARG GO_FEATURE_VERSION=${language_version}/" .devcontainer/Dockerfile

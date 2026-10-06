@@ -5,7 +5,9 @@
 non-interactive, idempotent, and safe to rerun.
 
 `go-vers.sh` synchronizes the selected Go version across the module, linter,
-containers, devcontainer, workflows, and documentation. Container base-image
+containers, devcontainer, workflows, and documentation. The module language
+version retains its canonical `.0` patch while linter and feature settings use
+the major/minor form. Container base-image
 tags are also digest-pinned; update the matching digest whenever a tag changes.
 
 `release-metadata.sh` synchronizes the changelog with reachable stable release
