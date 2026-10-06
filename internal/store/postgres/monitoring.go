@@ -51,6 +51,7 @@ func (store *Store) Capabilities(ctx context.Context) (domain.ControlCapabilitie
 	if store.diagnosticDeploymentID != "" {
 		result.Features = append(result.Features, "shared-diagnostic-snapshots")
 	}
+	result.Features = append(result.Features, "job-execution-detail")
 	if err := store.pool.QueryRow(ctx, `SELECT i.id::text, r.restore_epoch::text, statement_timestamp()
  FROM control_instance AS i CROSS JOIN service_recovery_state AS r WHERE i.singleton AND r.singleton`).Scan(&result.InstanceID, &result.RecoveryEpoch, &result.ServerTime); err != nil {
 		return domain.ControlCapabilities{}, fmt.Errorf("discover Control capabilities: %w", err)

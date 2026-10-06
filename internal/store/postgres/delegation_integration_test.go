@@ -79,6 +79,9 @@ func TestDelegatedAuthorityIntegration(t *testing.T) {
 	if err != nil || job.Owner.ID != principalID || job.AsOf.IsZero() {
 		t.Fatalf("delegated preserved owner/read time=%#v,%v", job, err)
 	}
+	if job.Execution == nil || job.Execution.Command.Executable == "" {
+		t.Fatal("authorized delegated detail lacks execution metadata")
+	}
 	page, err := store.ListJobs(ctx, principal, "research", domain.JobListOptions{Limit: 1, OwnerPrincipalID: principalID})
 	if err != nil || len(page.Jobs) != 1 || page.AsOf.IsZero() || !page.Jobs[0].AsOf.Equal(page.AsOf) {
 		t.Fatalf("job snapshot=%#v,%v", page, err)

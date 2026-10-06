@@ -66,6 +66,27 @@ submitter and does not expose the importing principal as the job owner.
 Current-run numbers and summary counts use decimal strings to preserve precision.
 Original numeric job revisions remain compatible with the existing contract.
 
+Sources advertising `job-execution-detail` additionally return `spec.execution`
+from `GET /v1/namespaces/{namespace}/jobs/{jobID}`. This contains the immutable
+submitted `command.executable`, ordered `command.args` (always an array), and
+`workingDirectory`, bound to the job's namespace and `workloadDigest`. It is
+authorized by the same current `jobs.read` capability and delegated actor checks
+as the rest of the job detail. It is not a resolved executable path or evidence
+of execution. A direct shell executable retains its literal arguments; Control
+does not interpret or reconstruct a shell command line.
+
+Command and directory metadata is absent from job lists, collection/graph child
+projections, mutation responses, monitoring events, and diagnostic snapshots.
+Environment values, secret references, and arbitrary workload fields are never
+included. Each string is limited to 65,536 UTF-8 bytes, with at most 4,096
+arguments. Both the projected database JSON and encoded execution response are
+limited to 2 MiB. If the metadata is missing, unsupported, or too large, the
+detail omits `execution` and returns `spec.executionUnavailableReason` as
+`missing`, `unsupported`, or `too_large`; the remaining job status is preserved.
+Content is never silently truncated. Sources without the capability may omit
+both fields. Responses retain `Cache-Control: no-store`. No schema migration is
+needed because the projection reads the existing immutable workload revision.
+
 `lifecycle.startedAt` and `completedAt` represent recorded source observations,
 with separate recording timestamps and provenance. A scheduler running
 observation does not claim to know the scheduler's exact launch instant.

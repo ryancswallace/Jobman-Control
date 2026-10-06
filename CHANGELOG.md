@@ -20,6 +20,11 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Added
 
+- Expose bounded submitted executable, ordered arguments, and working directory
+  on authorized single-job detail reads, with explicit unavailability reasons.
+  Lists and events remain free of command content; environment values and
+  arbitrary workload fields are never projected. No database migration is needed.
+
 - Bounded authorized run catalogs and run detail for historical log, artifact and
   evidence selection, with exact run identity and current source authority.
 
