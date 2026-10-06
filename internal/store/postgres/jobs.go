@@ -131,6 +131,10 @@ func (store *Store) GetJob(
 		if err != nil {
 			return domain.Job{}, fmt.Errorf("get job: %w", err)
 		}
+		job.Execution, job.ExecutionUnavailableReason, err = readJobExecution(ctx, tx, authorization.namespaceID, job.ID, job.WorkloadDigest)
+		if err != nil {
+			return domain.Job{}, err
+		}
 
 		return job, nil
 	})

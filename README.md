@@ -31,7 +31,7 @@ submit work, enforce policy, and track results.
 | Capability | Jobman Control provides... |
 | --- | --- |
 | Shared state | PostgreSQL-backed jobs, runs, assignments, target generations, policy, and audit history |
-| Monitoring | Instance discovery, complete namespace summaries, filtered job pages, original owners, runs, and lifecycle provenance |
+| Monitoring | Instance discovery, complete namespace summaries, filtered job pages, original owners, runs, lifecycle provenance, and authorized detail-only submitted commands |
 | Delegation | [Pinned read-only service assertions](docs/DELEGATION.md), verified directory aliases, replay protection, and repository scope checks |
 | Group monitoring | [Bounded catalogs, array children, graph predicates, and neighborhoods](docs/GROUP_MONITORING.md) with complete source counts |
 | Placement | Named hosts, on-premises Slurm partitions, and AWS ParallelCluster target records |

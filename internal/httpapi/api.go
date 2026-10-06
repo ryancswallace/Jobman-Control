@@ -564,7 +564,7 @@ func (service *api) getJob(
 		return
 	}
 	writer.Header().Set("ETag", revisionETag(job.Revision))
-	writeJSON(writer, http.StatusOK, newJobResponse(job))
+	writeJSON(writer, http.StatusOK, newJobDetailResponse(job))
 }
 
 func (service *api) listJobs(
@@ -1104,8 +1104,10 @@ type jobMetadata struct {
 }
 
 type jobSpec struct {
-	WorkloadDigest string       `json:"workloadDigest"`
-	Placement      jobPlacement `json:"placement"`
+	Execution                  *domain.JobExecution `json:"execution,omitempty"`
+	ExecutionUnavailableReason string               `json:"executionUnavailableReason,omitempty"`
+	WorkloadDigest             string               `json:"workloadDigest"`
+	Placement                  jobPlacement         `json:"placement"`
 }
 
 type jobPlacement struct {
@@ -1242,6 +1244,13 @@ type errorResponse struct {
 type apiError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+func newJobDetailResponse(job domain.Job) jobResponse {
+	response := newJobResponse(job)
+	response.Spec.Execution = job.Execution
+	response.Spec.ExecutionUnavailableReason = job.ExecutionUnavailableReason
+	return response
 }
 
 func newJobResponse(job domain.Job) jobResponse {

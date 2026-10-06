@@ -120,6 +120,9 @@ type ExecutionFeatures struct {
 
 // Job is the current durable shared job snapshot.
 type Job struct {
+	Execution                  *JobExecution
+	ExecutionUnavailableReason string
+
 	AsOf                  time.Time
 	NamespaceID           string
 	Owner                 *JobOwner

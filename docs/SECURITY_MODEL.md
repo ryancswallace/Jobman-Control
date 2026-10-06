@@ -13,6 +13,17 @@ still reveal departmental activity. Workload commands, environments, process
 results, and logs may contain secrets even when Jobman does not classify them
 as credentials.
 
+An authorized single-job detail read exposes the submitted executable, ordered
+arguments, and working directory to namespace members with `jobs.read`. These
+fields can contain sensitive content and must not be copied into telemetry,
+notifications, or application logs. They are excluded from lists, group child
+projections, mutation responses, monitoring events, and diagnostic snapshots.
+The projection never includes environment values, secret references, or the
+full workload document. It is bounded and unavailable metadata is reported
+without truncation; see [the API contract](API.md). Existing namespace and
+delegated-actor authorization is checked in the same read transaction as the
+namespace/job/digest-bound lookup. Responses remain non-cacheable.
+
 ## Principals and authority
 
 - OIDC principals may act only through namespace roles stored in PostgreSQL.

@@ -2551,6 +2551,11 @@ components:
           required: [workloadDigest, placement]
           properties:
             workloadDigest: {$ref: "#/components/schemas/Digest"}
+            execution:
+              $ref: "#/components/schemas/JobExecution"
+            executionUnavailableReason:
+              description: Detail GET only. Metadata is absent, unsupported, or exceeds the bounded projection; other job status remains available. Mutually exclusive with execution.
+              enum: [missing, unsupported, too_large]
             placement:
               type: object
               required: [target, targetId, targetGenerationId, executionBackend]
@@ -2585,6 +2590,35 @@ components:
                 reason: {type: string, maxLength: 4096}
                 cluster: {type: string, maxLength: 128}
                 observedAt: {type: string, format: date-time}
+    JobExecution:
+      description: Submitted immutable invocation, returned only by the single-job GET under jobs.read. Never included in lists, groups, mutations or events. No environment values or secret references. Projected database JSON and encoded response are each bounded to 2097152 bytes; over-limit metadata is unavailable, never truncated.
+      type: object
+      additionalProperties: false
+      required: [command, workingDirectory]
+      properties:
+        command:
+          type: object
+          additionalProperties: false
+          required: [executable, args]
+          properties:
+            executable:
+              type: string
+              minLength: 1
+              maxLength: 65536
+              description: At most 65536 UTF-8 bytes, without NUL. Submitted executable, not a resolved target path.
+            args:
+              type: array
+              maxItems: 4096
+              description: Ordered literal arguments, including empty strings. Shell-wrapper arguments are not parsed or expanded.
+              items:
+                type: string
+                maxLength: 65536
+                description: At most 65536 UTF-8 bytes, without NUL.
+        workingDirectory:
+          type: string
+          minLength: 1
+          maxLength: 65536
+          description: Submitted working directory, at most 65536 UTF-8 bytes without NUL; not a verified target filesystem path.
     JobList:
       type: object
       additionalProperties: false
