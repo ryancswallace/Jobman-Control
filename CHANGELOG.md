@@ -5,6 +5,11 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Documentation
+
+- Reconcile released service and compiled dependency versions, agent-recovery
+  requirements, and the operational review against the implemented monitoring feed.
+
 ## [0.3.0] - 2026-11-08
 
 ### Added

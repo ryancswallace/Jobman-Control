@@ -1,6 +1,6 @@
 # Jobman Control documentation
 
-Jobman Control is pre-release. Documentation distinguishes implemented
+Jobman Control v0.3.0 is released with a pre-v1 API. Documentation distinguishes implemented
 behavior from planned behavior; the OpenAPI document and tested code remain
 the executable contract for the current `v1alpha1` slice.
 
