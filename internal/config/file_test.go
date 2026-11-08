@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -58,6 +59,12 @@ func TestFileRuntimeCredentialsAndRelativePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	configuration, _, err := loadFile(path, mapLookup(nil), true)
+	if runtime.GOOS == "windows" {
+		if err == nil {
+			t.Fatal("runtime accepted a credential file without verified POSIX permissions")
+		}
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +107,14 @@ func TestEnvironmentCredentialFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	values := map[string]string{"JOBMAN_CONTROL_DATABASE_URL_FILE": path, "JOBMAN_CONTROL_AUTH_MODE": "development"}
-	if _, err := loadEnvironment(mapLookup(values)); err != nil {
+	_, err := loadEnvironment(mapLookup(values))
+	if runtime.GOOS == "windows" {
+		if err == nil {
+			t.Fatal("environment accepted a credential file without verified POSIX permissions")
+		}
+		return
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	values["JOBMAN_CONTROL_DATABASE_URL"] = ""
