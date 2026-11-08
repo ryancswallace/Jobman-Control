@@ -5,6 +5,8 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-08
+
 ### Added
 
 - External versioned JSON service configuration, protected secret-file references,
@@ -175,7 +177,8 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
   pre-v1. Replicas must run the same version, migrations are forward-only, and
   rollback across a migration requires the matching database backup and binary.
 
-[Unreleased]: https://github.com/ryancswallace/jobman-control/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman-control/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ryancswallace/jobman-control/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/ryancswallace/jobman-control/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ryancswallace/jobman-control/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ryancswallace/jobman-control/compare/v0.1.0...v0.1.1
