@@ -68,6 +68,16 @@ session is also required. Namespace
 authorization is repeated in repository queries so an HTTP routing mistake
 does not become the only boundary.
 
+Expired inert sessions can be renewed only with current same-agent mTLS;
+bearer-only renewal remains expiry-bound. Expired certificates require fresh
+OIDC-authorized enrollment authority through the
+[explicit recovery API](API.md#agent-credential-recovery). Recovery checks current
+namespace permissions and preserves the agent identity and pinned generation.
+It never accepts an expired or explicitly revoked certificate as authority.
+Public certificate responses and derived-session references are retained for
+bounded exact retries; private keys and clear enrollment tokens are not stored
+in the recovery ledger. Token and certificate TTLs are unchanged.
+
 Mutation documents are bounded, strictly decoded, canonicalized, digested, and
 idempotent. Database constraints preserve namespace ancestry, known states,
 monotonic sequences, immutable target generations, and artifact metadata

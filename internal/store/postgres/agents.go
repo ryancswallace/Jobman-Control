@@ -334,27 +334,38 @@ func (store *Store) RecordAgentCertificate(
 	agentID string,
 	certificate domain.AgentCertificate,
 ) error {
-	commandTag, err := store.pool.Exec(ctx, `
+	_, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (struct{}, error) {
+		var locked string
+		if lockErr := tx.QueryRow(ctx, `SELECT id::text FROM agents WHERE id=$1 AND status='active' FOR UPDATE`, agentID).Scan(&locked); lockErr != nil {
+			if errors.Is(lockErr, pgx.ErrNoRows) {
+				return struct{}{}, domain.ErrConflict
+			}
+			return struct{}{}, fmt.Errorf("lock enrollment certificate agent: %w", lockErr)
+		}
+		commandTag, err := tx.Exec(ctx, `
 		INSERT INTO agent_certificates (
 			serial, namespace_id, agent_id, public_key_digest, not_after
 		)
 		SELECT $2, namespace_id, id, $3, $4
 		FROM agents
 		WHERE id = $1 AND status = 'active'
+        AND NOT EXISTS (SELECT 1 FROM agent_recoveries r WHERE r.agent_id=agents.id)
 		ON CONFLICT (serial) DO UPDATE
 		SET serial = EXCLUDED.serial
 		WHERE agent_certificates.agent_id = EXCLUDED.agent_id
 			AND agent_certificates.public_key_digest = EXCLUDED.public_key_digest
 			AND agent_certificates.not_after = EXCLUDED.not_after
 	`, agentID, certificate.Serial, certificate.PublicKeyDigest, certificate.ExpiresAt)
-	if err != nil {
-		return fmt.Errorf("record agent certificate: %w", err)
-	}
-	if commandTag.RowsAffected() != 1 {
-		return domain.ErrConflict
-	}
+		if err != nil {
+			return struct{}{}, fmt.Errorf("record agent certificate: %w", err)
+		}
+		if commandTag.RowsAffected() != 1 {
+			return struct{}{}, domain.ErrConflict
+		}
 
-	return nil
+		return struct{}{}, nil
+	})
+	return err
 }
 
 // RotateAgentCertificate installs a new public key credential and revokes the
@@ -561,6 +572,7 @@ func (store *Store) replayEnrollment(
 		FROM agents AS a
 		JOIN agent_sessions AS s ON s.agent_id = a.id
 		WHERE a.id = $1 AND s.revoked_at IS NULL
+			AND NOT EXISTS (SELECT 1 FROM agent_recoveries r WHERE r.agent_id=a.id)
 			AND s.expires_at > transaction_timestamp()
 		ORDER BY s.created_at DESC
 		LIMIT 1

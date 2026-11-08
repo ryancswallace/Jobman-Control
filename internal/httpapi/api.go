@@ -142,6 +142,7 @@ func New(options Options) (http.Handler, error) {
 		serverAPI.client(serverAPI.createEnrollmentToken),
 	)
 	mux.HandleFunc("POST /v1/agent/enroll", serverAPI.enrollAgent)
+	mux.HandleFunc("POST /v1/agent/recover", serverAPI.recoverAgent)
 	mux.HandleFunc("POST /v1/agent/session/renew", serverAPI.renewAgentSession)
 	mux.HandleFunc("GET /v1/agent/assignments", serverAPI.listAgentAssignments)
 	mux.HandleFunc("POST /v1/agent/certificate/renew", serverAPI.renewAgentCertificate)

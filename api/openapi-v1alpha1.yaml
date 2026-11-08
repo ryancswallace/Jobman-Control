@@ -1292,11 +1292,53 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/ClientError"}
         "409": {$ref: "#/components/responses/ClientError"}
+  /v1/agent/recover:
+    post:
+      operationId: recoverAgent
+      security:
+        - enrollmentToken: []
+      description: >-
+        Restore credentials for the same active enrolled agent using fresh
+        enrollment authority. The previous certificate must be expired and
+        unrevoked. Namespace, principal, target, current generation and execution
+        user must match. No expired certificate is accepted as authority.
+        Identical retries return the original credentials only while those
+        credentials remain valid and current authorization still permits access.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentRecovery"}
+      responses:
+        "201":
+          description: Credentials replaced atomically; agent identity preserved.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "200":
+          description: Exact original credentials replayed without extending expiry.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "400": {$ref: "#/components/responses/ClientError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/ClientError"}
+        "409": {$ref: "#/components/responses/ClientError"}
+        "503": {$ref: "#/components/responses/ClientError"}
   /v1/agent/session/renew:
     post:
       operationId: renewAgentSession
+      description: >-
+        Bearer-only renewal requires an unexpired, unrevoked inert token.
+        A currently valid, database-authorized mTLS certificate for the same
+        agent also permits an expired unrevoked token. Under that mTLS identity,
+        retrying a replaced token returns only its still-valid unrevoked direct
+        replacement, without extending its expiry. Invalid presented client
+        certificates never fall back to bearer-only authorization.
       security:
         - agentToken: []
+        - agentToken: []
+          agentMutualTLS: []
       responses:
         "200":
           description: Old token atomically revoked and replaced.
@@ -1932,6 +1974,28 @@ components:
             principal: {$ref: "#/components/schemas/Principal"}
             expectedUser: {type: string}
             token: {type: string, writeOnly: true}
+    AgentRecovery:
+      type: object
+      additionalProperties: false
+      required: [apiVersion, kind, metadata, spec]
+      properties:
+        apiVersion: {const: jobman.control/v1alpha1}
+        kind: {const: AgentRecovery}
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [agentId]
+          properties:
+            agentId: {type: string, format: uuid}
+        spec:
+          type: object
+          additionalProperties: false
+          required: [targetGenerationId, previousCertificateSerial, executionUser, certificateSigningRequest]
+          properties:
+            targetGenerationId: {type: string, format: uuid}
+            previousCertificateSerial: {type: string, minLength: 1, maxLength: 64}
+            executionUser: {type: string, minLength: 1, maxLength: 512}
+            certificateSigningRequest: {type: string, minLength: 1, maxLength: 65536}
     AgentEnrollment:
       type: object
       additionalProperties: false
