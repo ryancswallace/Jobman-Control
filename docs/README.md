@@ -7,7 +7,10 @@ the executable contract for the current `v1alpha1` slice.
 - [Architecture](ARCHITECTURE.md): repository and service boundaries, data
   ownership, and request flows.
 - [API](API.md): endpoint contract, authentication classes, and idempotency.
-- [Configuration](CONFIGURATION.md): every supported environment setting.
+- [Configuration](CONFIGURATION.md): external service files, protected credential
+  references, bounded tuning and compatibility environment settings.
+- [Declarative resources](DECLARATIVE_CONFIGURATION.md): offline validation and
+  identity/revision-checked administrative plan/apply.
 - [Development](DEVELOPMENT.md): local PostgreSQL, tests, contracts, and tools.
 - [Deployment](DEPLOYMENT.md): production topology, TLS, identity, containers,
   native packages, and startup.

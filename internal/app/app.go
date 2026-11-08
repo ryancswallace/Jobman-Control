@@ -25,7 +25,19 @@ import (
 
 // Run loads configuration and serves until ctx is canceled or the listener fails.
 func Run(ctx context.Context, logger *slog.Logger) error {
-	configuration, err := config.Load()
+	return RunFile(ctx, logger, "")
+}
+
+// RunFile selects one explicit configuration file, or the legacy environment
+// configuration when path is empty.
+func RunFile(ctx context.Context, logger *slog.Logger, path string) error {
+	var configuration config.Config
+	var err error
+	if path == "" {
+		configuration, err = config.Load()
+	} else {
+		configuration, err = config.LoadFile(path)
+	}
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
@@ -36,7 +48,7 @@ func Run(ctx context.Context, logger *slog.Logger) error {
 func run(ctx context.Context, logger *slog.Logger, configuration config.Config) error {
 	startupContext, cancelStartup := context.WithTimeout(ctx, configuration.ShutdownTimeout)
 	defer cancelStartup()
-	pool, err := postgres.Open(startupContext, configuration.DatabaseURL)
+	pool, err := postgres.OpenConfigured(startupContext, configuration.DatabaseURL, configuration.DatabasePool)
 	if err != nil {
 		return err
 	}

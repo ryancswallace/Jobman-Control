@@ -1,12 +1,11 @@
 package auth
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
 
+	"github.com/ryancswallace/jobman-control/internal/configjson"
 	"github.com/ryancswallace/jobman-control/internal/domain"
 )
 
@@ -29,14 +28,8 @@ func decodeDelegationKeys(reader io.Reader) ([]domain.DelegationKey, error) {
 	var document struct {
 		Services []domain.DelegationKey `json:"services"`
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&document); err != nil {
+	if err = configjson.Decode(data, &document); err != nil {
 		return nil, errors.New("public delegation registry is invalid")
-	}
-	var extra any
-	if err = decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, errors.New("public delegation registry contains trailing data")
 	}
 	if document.Services == nil || len(document.Services) > 64 {
 		return nil, errors.New("public delegation registry needs a bounded services list")

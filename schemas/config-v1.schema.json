@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jobman.tech/schemas/control/config-v1.schema.json",
+  "title": "Jobman Control configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "databaseURLFile",
+    "authMode"
+  ],
+  "properties": {
+    "databaseURLFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agentTokenKeyFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "listen": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authMode": {
+      "enum": [
+        "oidc",
+        "development"
+      ]
+    },
+    "developmentAuth": {
+      "type": "boolean"
+    },
+    "developmentIssuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "developmentSubject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "developmentName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "developmentNamespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "oidcIssuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "oidcAudience": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bootstrapSubject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bootstrapName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bootstrapNamespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tlsCertificateFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tlsKeyFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agentCACertificateFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agentCAKeyFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agentStaleAfter": {
+      "type": "string",
+      "minLength": 1
+    },
+    "migrateOnStart": {
+      "type": "boolean"
+    },
+    "directoryConfigFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "directoryMode": {
+      "enum": [
+        "preview",
+        "enforce"
+      ]
+    },
+    "delegationRegistryFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "delegationClientCAFile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "delegationAuditRetention": {
+      "type": "string",
+      "minLength": 1
+    },
+    "monitoringFeedRetention": {
+      "type": "string",
+      "minLength": 1
+    },
+    "diagnosticDeploymentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "operational": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agentSessionLifetime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentCertificateLifetime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enrollmentLifetime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coordinatorInterval": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readHeaderTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "writeTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idleTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shutdownTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readinessTimeout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxRequestBytes": {
+          "type": "integer",
+          "minimum": 4096,
+          "maximum": 2097152
+        }
+      }
+    },
+    "databasePool": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxConnections": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "minConnections": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 512
+        },
+        "maxLifetime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxIdleTime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "healthCheckPeriod": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "authMode": {
+            "const": "oidc"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "oidcIssuer",
+          "oidcAudience",
+          "agentTokenKeyFile"
+        ]
+      }
+    }
+  ]
+}

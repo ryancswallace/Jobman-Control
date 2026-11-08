@@ -4,22 +4,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/ryancswallace/jobman-control/internal/config"
 )
 
 // Open creates and verifies a bounded PostgreSQL connection pool.
 func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	return OpenConfigured(ctx, databaseURL, config.DefaultPoolSettings())
+}
+
+// OpenConfigured applies validated operational limits without putting them in
+// the secret-bearing database URL.
+func OpenConfigured(ctx context.Context, databaseURL string, settings config.PoolSettings) (*pgxpool.Pool, error) {
 	configuration, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, errors.New("parse PostgreSQL configuration")
 	}
-	configuration.MaxConns = 20
-	configuration.MinConns = 0
-	configuration.MaxConnLifetime = 30 * time.Minute
-	configuration.MaxConnIdleTime = 5 * time.Minute
-	configuration.HealthCheckPeriod = 30 * time.Second
+	configuration.MaxConns = settings.MaxConnections
+	configuration.MinConns = settings.MinConnections
+	configuration.MaxConnLifetime = settings.MaxLifetime
+	configuration.MaxConnIdleTime = settings.MaxIdleTime
+	configuration.HealthCheckPeriod = settings.HealthCheckPeriod
 
 	pool, err := pgxpool.NewWithConfig(ctx, configuration)
 	if err != nil {

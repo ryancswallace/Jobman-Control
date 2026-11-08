@@ -120,6 +120,12 @@ with the [API guide] and [development guide].
 
 ## Configuration at a glance
 
+Use an external versioned JSON file with `jobman-control --config FILE`. Validate
+it offline with `--check-config`, or inspect redacted values and origins with
+`--show-config`. Credentials remain protected file references. Existing environment
+configuration remains available when no file is selected; mixing them fails.
+See the [configuration guide] and [declarative resource workflow](docs/DECLARATIVE_CONFIGURATION.md).
+
 | Need | Settings |
 | --- | --- |
 | PostgreSQL | `JOBMAN_CONTROL_DATABASE_URL`, `JOBMAN_CONTROL_MIGRATE_ON_START` |

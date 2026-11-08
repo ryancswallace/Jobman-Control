@@ -11,7 +11,7 @@ import (
 
 func TestExecuteVersionAndUsage(t *testing.T) {
 	t.Parallel()
-	runner := func(context.Context, *slog.Logger) error {
+	runner := func(context.Context, *slog.Logger, string) error {
 		t.Fatal("service runner called")
 
 		return nil
@@ -34,7 +34,7 @@ func TestExecuteRunsServiceAndReportsSafeError(t *testing.T) {
 	t.Parallel()
 	want := errors.New("injected startup failure")
 	var stdout, stderr bytes.Buffer
-	status := execute(nil, &stdout, &stderr, func(context.Context, *slog.Logger) error {
+	status := execute(nil, &stdout, &stderr, func(context.Context, *slog.Logger, string) error {
 		return want
 	})
 	if status != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), want.Error()) {

@@ -5,6 +5,21 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- External versioned JSON service configuration, protected secret-file references,
+  offline validation, redacted effective settings and origins, bounded operational
+  tuning, and database pool limits. Legacy environment configuration remains
+  available without a service file; conflicting authorities fail closed.
+- Offline directory/delegation/resource validation and administrative resource
+  plan/apply through existing authorized APIs, with reviewed digests, instance and
+  recovery identities, immutable namespace IDs, revisions, and repeat-safe writes.
+
+### Changed
+
+- Directory and delegation configuration reject duplicate keys, nulls and
+  incorrect key casing as well as unknown fields.
+
 ## [0.2.1] - 2026-11-08
 
 ### Fixed
