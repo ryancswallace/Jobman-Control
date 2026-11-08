@@ -5,6 +5,13 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Fixed
+
+- Build release binaries with Go 1.26.10 so they include the patched standard
+  library. Refresh the matching container bases and the go-jose, LDAP, and pgx
+  dependencies to include their security and correctness fixes.
+- Use the tagged Jobman v1.9.0 dependency for the shared control contracts.
+
 ## [0.2.0] - 2026-10-06
 
 ### Fixed
