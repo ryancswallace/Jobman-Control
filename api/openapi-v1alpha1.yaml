@@ -9,7 +9,9 @@ info:
     one-time agent enrollment, short-lived agent mTLS
     credentials, capability/liveness observations, assignment acceptance,
     ordered execution events, immutable artifact metadata, and durable
-    cancellation intent.
+    cancellation intent. The local resources plan/apply CLI uses these same
+    authorized endpoints and revision/idempotency requirements; it adds no
+    administrative bypass or namespace creation endpoint.
 servers:
   - url: https://jobman-control.example.edu
 security:

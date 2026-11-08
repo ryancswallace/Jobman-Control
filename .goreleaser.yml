@@ -64,6 +64,8 @@ archives:
       - api/openapi-v1alpha1.yaml
       - docs/*.md
       - etc/jobman-control/jobman-control.env.example
+      - etc/jobman-control/*.example.json
+      - schemas/*.schema.json
       - etc/jobman-control/jobman-control.service
 
 nfpms:
@@ -93,6 +95,18 @@ nfpms:
         dst: /usr/share/doc/jobman-control/DEPLOYMENT.md
       - src: docs/OPERATIONS.md
         dst: /usr/share/doc/jobman-control/OPERATIONS.md
+      - src: docs/CONFIGURATION.md
+        dst: /usr/share/doc/jobman-control/CONFIGURATION.md
+      - src: docs/DECLARATIVE_CONFIGURATION.md
+        dst: /usr/share/doc/jobman-control/DECLARATIVE_CONFIGURATION.md
+      - src: schemas/config-v1.schema.json
+        dst: /usr/share/doc/jobman-control/schemas/config-v1.schema.json
+      - src: etc/jobman-control/config.example.json
+        dst: /etc/jobman-control/config.example.json
+        type: config|noreplace
+      - src: etc/jobman-control/resources.example.json
+        dst: /etc/jobman-control/resources.example.json
+        type: config|noreplace
       - src: api/openapi-v1alpha1.yaml
         dst: /usr/share/doc/jobman-control/openapi-v1alpha1.yaml
       - src: etc/jobman-control/jobman-control.env.example

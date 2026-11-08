@@ -1,5 +1,41 @@
 # Deployment
 
+## External configuration files
+
+Render organization settings outside this repository and validate them with
+`jobman-control --config FILE --check-config` before installation. The
+[configuration guide](CONFIGURATION.md) covers strict schemas, credential file
+references, offline inspection and the legacy environment interface. Restart
+Control after replacing service configuration; there is no partial hot reload.
+
+The packaged systemd unit retains the legacy environment interface. To select
+file mode, install an operator-owned drop-in such as:
+
+```ini
+[Service]
+EnvironmentFile=
+Environment=
+ExecStart=
+ExecStart=/usr/bin/jobman-control --config /etc/jobman-control/control.json
+LoadCredential=database-url:/etc/jobman-control/secrets/database-url
+LoadCredential=agent-token-key:/etc/jobman-control/secrets/agent-token-key
+```
+
+The existing four TLS `LoadCredential` entries remain. In the JSON document,
+reference `/run/credentials/jobman-control.service/database-url`,
+`/run/credentials/jobman-control.service/agent-token-key`, and the corresponding
+`server.crt`, `server.key`, `agent-ca.crt`, `agent-ca.key` paths. systemd does not
+expand `%d` inside JSON. Clear inherited `JOBMAN_CONTROL_*` settings when using
+file mode. Keep credential source files private; systemd delivers credentials to
+the dynamic service identity. Set the unit's stop timeout above the selected
+`operational.shutdownTimeout`.
+
+Containers can pass `--config /run/jobman/control.json` with a read-only mount and
+separate protected credential mounts. Do not bake deployment configuration or
+secrets into images. Offline checks defer connectivity, certificate validity and
+database migration readiness to startup. Administrative resource changes require
+a separate reviewed [plan/apply](DECLARATIVE_CONFIGURATION.md) operation.
+
 Jobman Control is pre-release and not yet recommended for production. A
 production-like deployment consists of PostgreSQL, one or more identical
 Control replicas, an HTTPS endpoint, one OIDC issuer, shared agent CA material,

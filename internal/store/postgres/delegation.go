@@ -3,8 +3,6 @@ package postgres
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"slices"
@@ -24,7 +22,7 @@ func (store *Store) RegisterDelegationKeys(ctx context.Context, keys []domain.De
 	}
 	seen := map[string]bool{}
 	for _, key := range keys {
-		if err := validateDelegationKey(key); err != nil {
+		if err := domain.ValidateDelegationKey(key); err != nil {
 			return err
 		}
 		id := key.ServiceID + "\x00" + key.KeyID
@@ -57,29 +55,6 @@ func (store *Store) RegisterDelegationKeys(ctx context.Context, keys []domain.De
 		return struct{}{}, nil
 	})
 	return err
-}
-
-func validateDelegationKey(key domain.DelegationKey) error {
-	if key.ServiceID == "" || len(key.ServiceID) > 128 || key.KeyID == "" || len(key.KeyID) > 128 || key.Audience == "" || len(key.Audience) > 512 || len(key.PublicKey) != ed25519.PublicKeySize || len(key.CertificateThumbprints) == 0 || len(key.CertificateThumbprints) > 8 || len(key.NamespaceIDs) == 0 || len(key.NamespaceIDs) > 320 || len(key.Operations) == 0 || len(key.Operations) > 8 {
-		return errors.New("delegation service registration is invalid")
-	}
-	for _, thumbprint := range key.CertificateThumbprints {
-		decoded, err := base64.RawURLEncoding.DecodeString(thumbprint)
-		if err != nil || len(decoded) != 32 {
-			return errors.New("delegation certificate thumbprint is invalid")
-		}
-	}
-	for _, namespaceID := range key.NamespaceIDs {
-		if !domain.IsID(namespaceID) {
-			return errors.New("delegation namespace ID is invalid")
-		}
-	}
-	for _, operation := range key.Operations {
-		if !domain.DelegationOperation(operation) {
-			return errors.New("delegation permits only explicit monitoring reads")
-		}
-	}
-	return nil
 }
 
 // DelegationKey returns current public registration without caching revocation.

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "endpoint": "https://control.example.invalid",
+  "expectedInstanceId": "00000000-0000-4000-8000-000000000001",
+  "expectedRecoveryEpoch": "1",
+  "resources": [
+    {
+      "kind": "NamespacePolicy",
+      "namespace": "example",
+      "namespaceId": "00000000-0000-4000-8000-000000000002",
+      "expectedRevision": 1,
+      "policy": {
+        "maxActiveJobs": 10,
+        "maxQueuedJobs": 100,
+        "maxCollectionItems": 100,
+        "maxGraphNodes": 100,
+        "idempotencyRetention": "24h",
+        "publishedOutboxRetention": "24h"
+      }
+    }
+  ]
+}

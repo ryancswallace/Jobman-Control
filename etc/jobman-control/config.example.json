@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "databaseURLFile": "/run/credentials/jobman-control/database-url",
+  "authMode": "oidc",
+  "oidcIssuer": "https://identity.example.invalid",
+  "oidcAudience": "jobman-control",
+  "agentTokenKeyFile": "/run/credentials/jobman-control/agent-token-key",
+  "listen": "127.0.0.1:8080",
+  "migrateOnStart": false
+}

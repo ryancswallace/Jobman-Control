@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 
+	"github.com/ryancswallace/jobman-control/internal/configjson"
 	"github.com/ryancswallace/jobman-control/internal/domain"
 )
 
@@ -37,13 +38,8 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return config, errors.New("read directory configuration failed")
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&config); err != nil {
+	if err = configjson.Decode(data, &config); err != nil {
 		return Config{}, errors.New("directory configuration is invalid JSON")
-	}
-	if err = decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return Config{}, errors.New("directory configuration has trailing data")
 	}
 	return config, Validate(config)
 }

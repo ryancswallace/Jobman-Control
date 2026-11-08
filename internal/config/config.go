@@ -40,6 +40,7 @@ const (
 // Config contains validated service settings. DatabaseURL is secret-bearing
 // and must never be logged or returned by an endpoint.
 type Config struct {
+	DatabasePool             PoolSettings
 	MonitoringFeedRetention  time.Duration
 	DiagnosticDeploymentID   string
 	DirectoryConfigFile      string
@@ -82,7 +83,7 @@ type Config struct {
 
 // Load reads configuration from the process environment.
 func Load() (Config, error) {
-	return load(os.LookupEnv)
+	return loadEnvironment(os.LookupEnv)
 }
 
 type lookupEnvironment func(string) (string, bool)
@@ -155,6 +156,7 @@ func load(lookup lookupEnvironment) (Config, error) {
 		return Config{}, errors.New("monitoring retention must be whole seconds")
 	}
 	configuration := Config{
+		DatabasePool:            DefaultPoolSettings(),
 		MonitoringFeedRetention: monitoringRetention,
 		DiagnosticDeploymentID:  strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIAGNOSTIC_DEPLOYMENT_ID", "")),
 		DirectoryConfigFile:     strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE", "")),
