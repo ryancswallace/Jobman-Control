@@ -144,9 +144,21 @@ func (service *api) renewAgentSession(writer http.ResponseWriter, request *http.
 		writeAgentUnauthenticated(writer, "Jobman-Agent")
 		return
 	}
-	session, err := service.repository.RenewAgentSession(
-		request.Context(), token, service.agentSessionLifetime,
-	)
+	var session domain.AgentSession
+	var err error
+	if request.TLS != nil && len(request.TLS.PeerCertificates) > 0 {
+		var identity domain.AgentIdentity
+		identity, err = service.authenticateAgentCertificate(request)
+		if err == nil {
+			session, err = service.repository.RenewAgentSessionWithCertificate(
+				request.Context(), identity, token, service.agentSessionLifetime,
+			)
+		}
+	} else {
+		session, err = service.repository.RenewAgentSession(
+			request.Context(), token, service.agentSessionLifetime,
+		)
+	}
 	if err != nil {
 		service.writeAgentRepositoryError(writer, request, "renew agent session", err)
 		return

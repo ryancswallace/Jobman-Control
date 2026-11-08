@@ -428,6 +428,8 @@ type ControlRepository interface {
 	CreateEnrollmentToken(context.Context, Principal, string, string, string, string, EnrollmentRequest) (EnrollmentToken, error)
 	EnrollAgent(context.Context, string, AgentRegistration, time.Duration) (AgentSession, error)
 	RenewAgentSession(context.Context, string, time.Duration) (AgentSession, error)
+	RenewAgentSessionWithCertificate(context.Context, AgentIdentity, string, time.Duration) (AgentSession, error)
+	RecoverAgent(context.Context, string, AgentRecovery, time.Duration) (AgentRecoveryResult, error)
 	AuthenticateAgent(context.Context, string) (AgentIdentity, error)
 	RecordAgentCertificate(context.Context, string, AgentCertificate) error
 	RotateAgentCertificate(context.Context, AgentIdentity, AgentCertificate) error
