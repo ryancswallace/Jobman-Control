@@ -20,6 +20,66 @@ pre-release and uses `jobman.control/v1alpha1` documents plus the portable
 TLS is required for non-loopback OIDC deployments. Agent mTLS requires the
 service TLS certificate and agent CA configuration.
 
+## Agent credential recovery
+
+`POST /v1/agent/session/renew` keeps the `Jobman-Agent` header. Without mTLS,
+only an unexpired, unrevoked session can rotate. With a currently valid,
+database-authorized certificate for the same agent, an expired unrevoked session
+can rotate too. An identical retry can return its still-valid unrevoked direct
+replacement; it does not follow replacement chains or extend expiry. An invalid
+presented client certificate never falls back to bearer-only authorization.
+
+After a certificate expires, use `POST /v1/agent/recover` with a **fresh normal
+enrollment token** in `Authorization: Jobman-Enrollment <token>`. Connect with
+server-authenticated TLS, without presenting the expired client certificate.
+The document is:
+
+```json
+{
+  "apiVersion": "jobman.control/v1alpha1",
+  "kind": "AgentRecovery",
+  "metadata": {"agentId": "11111111-1111-4111-8111-111111111111"},
+  "spec": {
+    "targetGenerationId": "22222222-2222-4222-8222-222222222222",
+    "previousCertificateSerial": "1001",
+    "executionUser": "worker",
+    "certificateSigningRequest": "<PEM CSR for a new locally retained key>"
+  }
+}
+```
+
+The token must bind the same namespace, principal, target, current generation,
+and execution user as the existing active agent. Token creator and recipient
+must still have the required namespace permissions, including directory
+freshness where applicable. The identified previous certificate must belong to
+that agent and be expired but unrevoked. The CSR proves possession of the new
+private key; the expired certificate itself grants no authority.
+
+A successful transaction consumes the token, replaces all existing credentials,
+and audits recovery while preserving the agent ID and every registration,
+assignment, execution and journal reference. The response is the existing
+`AgentSession` envelope with `inertOnly: false` and `spec.certificate`: HTTP 201
+initially, or HTTP 200 with `Idempotency-Replayed: true` on exact replay. Persist
+the CSR, new key and original request before sending. Retrying the same token
+and request returns exactly the same response while the resulting session and
+certificate are still unrevoked and unexpired. A changed request conflicts.
+Revocation and current authorization are checked on replay. Ordinary enrollment
+replays cannot revive pre-recovery credentials after this operation.
+
+If the recovery response is lost and the resulting session expires before a
+successful retry (normally 15 minutes), replay returns 409. Retain the saved
+request and new key for operator reconciliation. The original local certificate
+has already been revoked by the committed recovery; do not delete the state,
+extend TTLs, or attempt arbitrary credential replacements. This bounded replay
+window is a supported limitation of the initial recovery protocol.
+
+An old-generation agent cannot recover through a token for a newer generation.
+Recovery also refuses disabled or retired agents, disabled targets, revoked
+previous certificates and changed membership. These cases require operator
+review; never change the generation or delete local execution state to make
+recovery pass. Older Control versions return 404 for this route, so upgrade
+Control before using an agent client with recovery support.
+
 ## Principal discovery and contributing grants
 
 `GET /v1/me` returns the verified issuer/subject, existing principal UUID when

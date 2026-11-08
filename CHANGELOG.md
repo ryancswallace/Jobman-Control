@@ -20,6 +20,16 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 - Directory and delegation configuration reject duplicate keys, nulls and
   incorrect key casing as well as unknown fields.
 
+### Fixed
+
+- Restore expired inert sessions using current same-agent mTLS, with bounded
+  replay after a lost response. Bearer-only renewal still requires an unexpired
+  session; credential TTLs and revocation checks remain unchanged.
+- Add explicit expired-certificate recovery using fresh enrollment authority,
+  preserving agent identities and execution references. Migration 23 retains
+  exact credential responses for safe retries and prevents old enrollment
+  replays from restoring credentials after recovery.
+
 ## [0.2.1] - 2026-11-08
 
 ### Fixed
