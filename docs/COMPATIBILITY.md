@@ -1,6 +1,6 @@
 # Compatibility
 
-Jobman Control v0.3.0 is the released service baseline. The `v1alpha1` API and
+Jobman Control v0.3.1 is the service baseline. The `v1alpha1` API and
 pre-v1 release series do not establish a permanent compatibility commitment.
 This table describes implemented and tested contracts.
 

@@ -5,6 +5,15 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Fixed
+
+- Refresh the indirect cryptography dependency to the upstream security-fix
+  commit that removes unmaintained OpenPGP packages and includes SSH fixes.
+  This clears conservative alerts from stripped release binaries; source
+  reachability checks did not identify use of the affected APIs. Refresh its
+  required synchronization and text dependencies without changing protocols
+  or database migrations.
+
 ### Documentation
 
 - Reconcile released service and compiled dependency versions, agent-recovery
