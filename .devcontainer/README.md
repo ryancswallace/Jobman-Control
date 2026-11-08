@@ -1,7 +1,7 @@
 # Devcontainer
 
 The devcontainer is the reproducible contributor environment for Jobman
-Control. It provides Go 1.26.6, pinned Go editor and debugger tools, GitHub CLI,
+Control. It provides Go 1.26.10, pinned Go editor and debugger tools, GitHub CLI,
 PostgreSQL client utilities, ShellCheck, and Docker-outside-of-Docker for the
 development database, integration tests, and release-container checks.
 
