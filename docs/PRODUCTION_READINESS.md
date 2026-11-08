@@ -1,6 +1,20 @@
 # Production-readiness review
 
-Review date: 2026-08-23
+Initial review date: 2026-08-23. Repository reconciliation: 2026-11-08.
+
+## Current released baseline
+
+Control v0.3.0 includes deployment configuration, administrative resource
+plan/apply, the durable terminal monitoring publisher and agent credential
+recovery. The public API remains `v1alpha1`. Credential recovery preserves an
+existing agent identity; it is separate from service-wide disaster recovery and
+emergency CA rollover. See [compatibility](COMPATIBILITY.md),
+[monitoring events](MONITORING_EVENTS.md) and the [identity API](API.md).
+
+The original review and acceptance exercises below remain useful technical
+history. They are not an instruction to implement the complete roadmap before
+an evaluation. Track remaining work as scoped issues with an owner, observable
+acceptance criteria and an explicit deployment constraint where applicable.
 
 Result: the first implementation pass is complete enough for controlled
 development and integration testing, but it is not approved for production.
@@ -96,13 +110,15 @@ following:
    outage, target drain, user offboarding, audit export recovery, and artifact
    restore drills.
 
-## Known release blockers
+## Remaining operational capabilities
 
 The application still lacks a service-administrator recovery API, automated
 proof of post-restore convergence, emergency CA rollover/revocation APIs,
 per-execution secret/cloud credential brokering, cross-user filesystem ACL
 provisioning, a separately packaged least-privilege migration command, and an
-outbox publisher. Priority classes and target-weighted fairness are also not
+general-purpose external outbox publisher. The bounded terminal monitoring
+publisher is implemented; it must not be mistaken for general event export.
+Priority classes and target-weighted fairness are also not
 implemented. These gaps may be resolved by code, a tightly scoped external
 operator control, or an explicitly accepted deployment constraint, but none
 should be silently treated as present.

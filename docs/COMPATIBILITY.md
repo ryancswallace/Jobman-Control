@@ -1,14 +1,14 @@
 # Compatibility
 
-Jobman Control v0.1.0 does not establish a stable compatibility commitment.
-This table describes the tested pre-release slice rather than a permanent
-support policy.
+Jobman Control v0.3.0 is the released service baseline. The `v1alpha1` API and
+pre-v1 release series do not establish a permanent compatibility commitment.
+This table describes implemented and tested contracts.
 
 | Component | Current contract |
 | --- | --- |
 | Go source build | Exact patch in `go.version`; language baseline in `go.mod` |
 | PostgreSQL | PostgreSQL 17.6 in continuous integration |
-| Shared evidence development dependency | Public core `diagnostic` at `v1.8.1-0.20261003211041-62ac89b14547`; unreleased immutable development pin pending approved upstream release |
+| Compiled shared evidence dependency | Public core `diagnostic` from released Jobman v1.9.0; exact module checksums are in `go.sum` |
 | Client API | `jobman.control/v1alpha1` |
 | Portable workload and agent protocol | Checked-in `jobman/v1alpha1` snapshot from Jobman v1.7.0; verified unchanged in v1.8.0 |
 | Runtime archives | Linux, macOS, and Windows; amd64, arm64, and supported 386 combinations |
@@ -22,7 +22,7 @@ support policy.
 | Agent installation | Linux systemd user service; one-time OpenSSH bootstrap lives in Jobman |
 
 The service and every replica must run the same binary version during this
-pre-release phase. A database migration ledger must exactly match the binary.
+pre-v1 phase. A database migration ledger must exactly match the binary.
 Downgrading across a migration is unsupported; restore the matching database
 backup and previous binary together.
 
@@ -50,9 +50,11 @@ optimization through native Slurm dependencies are not yet release-supported.
 
 The public shared diagnostic module pin is fetched and checksummed through Go
 modules; builds never depend on a sibling checkout or a local `replace` rule.
-It is a temporary development integration pin, not a claim that the upstream
-shared evidence contract has shipped. Production release acceptance requires the
-approved core release and an explicit consumer version update.
+The released module pin describes code embedded in Control, separately from the
+Core/Agent executables installed on targets. Agent credential recovery requires
+Control v0.3.0 and Jobman Agent v1.10.1 or newer compatible releases. Changing a
+consumer pin requires its own compatibility checks; version strings alone do not
+establish deployment interoperability.
 
 Migration 21 adds the durable monitoring feed and explicit service-only assertion
 shape. It does not backfill old terminal jobs. Exact schema compatibility prevents

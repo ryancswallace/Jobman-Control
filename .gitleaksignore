@@ -1,0 +1,10 @@
+# Reviewed historical false positives only; no path-wide or test-wide exclusions.
+# Hashes, fixed filenames/identifiers and prose are not reusable credentials.
+# New fingerprints require review; run Gitleaks with --redact=100.
+072ab82f167ce9589287e7bdc3e36fb89a6ced82:api/openapi-v1alpha1.yaml:generic-api-key:10
+2d25c39068ef49a7ecff9d9e7bd53e1d24d22f2e:api/openapi-v1alpha1.yaml:generic-api-key:10
+8ecf05f7778bcdc923f549b5acc5d7ec9cdb34db:api/openapi-v1alpha1.yaml:generic-api-key:10
+e2ad71fc643bea2c6b286dea78c4a5d2dc78a46b:devel/labfixture/profile.go:generic-api-key:19
+e2ad71fc643bea2c6b286dea78c4a5d2dc78a46b:devel/labfixture/profile.go:generic-api-key:23
+f1947b2acc82ef8199104aa118385fd53a3c2b58:devel/labfixture/profile.go:generic-api-key:18
+f1947b2acc82ef8199104aa118385fd53a3c2b58:devel/labfixture/profile.go:generic-api-key:22
