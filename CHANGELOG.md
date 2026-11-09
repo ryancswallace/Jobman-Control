@@ -5,6 +5,8 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-09
+
 ## [0.4.1] - 2026-11-08
 
 ### Fixed
@@ -218,7 +220,8 @@ metadata validation before a release was published.
   pre-v1. Replicas must run the same version, migrations are forward-only, and
   rollback across a migration requires the matching database backup and binary.
 
-[Unreleased]: https://github.com/ryancswallace/jobman-control/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman-control/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/ryancswallace/jobman-control/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ryancswallace/jobman-control/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ryancswallace/jobman-control/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/ryancswallace/jobman-control/compare/v0.3.0...v0.3.1
