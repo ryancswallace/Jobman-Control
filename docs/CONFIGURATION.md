@@ -49,7 +49,7 @@ The service schema documents every field. Service fields use camelCase names:
 `developmentSubject`, `developmentName`, `developmentNamespace`, `oidcIssuer`,
 `oidcAudience`, `bootstrapSubject`, `bootstrapName`, `bootstrapNamespace`,
 `tlsCertificateFile`, `tlsKeyFile`, `agentCACertificateFile`, `agentCAKeyFile`,
-`agentStaleAfter`, `migrateOnStart`, `directoryConfigFile`, `directoryMode`,
+`agentOverlapCAFile`, `agentStaleAfter`, `migrateOnStart`, `directoryConfigFile`, `directoryMode`,
 `delegationRegistryFile`, `delegationClientCAFile`, `delegationAuditRetention`,
 `monitoringFeedRetention`, and `diagnosticDeploymentId`. The file requires
 `schemaVersion: 1` and `databaseURLFile`. Authentication must be selected explicitly.
@@ -74,6 +74,7 @@ The service schema documents every field. Service fields use camelCase names:
 | `JOBMAN_CONTROL_TLS_KEY_FILE` | unset | Server private key |
 | `JOBMAN_CONTROL_AGENT_CA_CERT_FILE` | unset | Agent client-certificate CA |
 | `JOBMAN_CONTROL_AGENT_CA_KEY_FILE` | unset | Agent certificate-authority private key |
+| `JOBMAN_CONTROL_AGENT_OVERLAP_CA_FILE` | unset | One additional public agent CA certificate for a bounded trust overlap |
 | `JOBMAN_CONTROL_AGENT_STALE_AFTER` | `2m` | Silence interval before accepted/running observations become stale |
 | `JOBMAN_CONTROL_MIGRATE_ON_START` | `true` | Apply embedded forward-only migrations at startup |
 | `JOBMAN_CONTROL_DIRECTORY_CONFIG_FILE` | unset | External [directory mapping](DIRECTORY.md), including password and CA references |

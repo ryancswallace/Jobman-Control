@@ -1,0 +1,11 @@
+groups:
+  - name: jobman-control-lifecycle
+    rules:
+      - alert: JobmanControlLifecycleBacklog
+        expr: jobman_control_lifecycle_backlog_oldest_seconds > 900 or jobman_control_lifecycle_backlog > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Jobman Control lifecycle export is behind
+          description: Check the archive consumer and its last durable receipt. Preserve pending rows and check PostgreSQL headroom.

@@ -1,0 +1,29 @@
+rule_files:
+  - lifecycle-alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: Consumer outage and recovery
+    interval: 1m
+    input_series:
+      - series: 'jobman_control_lifecycle_backlog{instance="fixture"}'
+        values: '1+1x7 0 0'
+      - series: 'jobman_control_lifecycle_backlog_oldest_seconds{instance="fixture"}'
+        values: '840 900 960+60x5 0 0'
+      - series: 'jobman_control_monitoring_backlog{instance="fixture"}'
+        values: '50000+0x9'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: JobmanControlLifecycleBacklog
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: JobmanControlLifecycleBacklog
+        exp_alerts:
+          - exp_labels:
+              instance: fixture
+              severity: warning
+            exp_annotations:
+              summary: Jobman Control lifecycle export is behind
+              description: Check the archive consumer and its last durable receipt. Preserve pending rows and check PostgreSQL headroom.
+      - eval_time: 8m
+        alertname: JobmanControlLifecycleBacklog
+        exp_alerts: []

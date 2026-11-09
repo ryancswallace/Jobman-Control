@@ -68,6 +68,13 @@ func reconcileOneAssignment(
 	tx pgx.Tx,
 	identifiers []string,
 ) (bool, error) {
+	var hold bool
+	if err := tx.QueryRow(ctx, `SELECT reconciliation_hold FROM service_recovery_state WHERE singleton FOR SHARE`).Scan(&hold); err != nil {
+		return false, fmt.Errorf("lock recovery state: %w", err)
+	}
+	if hold {
+		return false, nil
+	}
 	candidate, err := claimAssignmentCandidate(ctx, tx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
@@ -180,7 +187,6 @@ func claimAssignmentCandidate(ctx context.Context, tx pgx.Tx) (assignmentCandida
 		FROM jobs AS j
 		JOIN namespaces AS n ON n.id = j.namespace_id
 		JOIN namespace_policies AS namespace_policy ON namespace_policy.namespace_id = n.id
-		CROSS JOIN service_recovery_state AS recovery
 		JOIN targets AS t ON t.id = j.target_id
 			AND t.state = 'active'
 		JOIN target_generations AS tg ON tg.id = j.target_generation_id
@@ -259,8 +265,7 @@ func claimAssignmentCandidate(ctx context.Context, tx pgx.Tx) (assignmentCandida
 			ORDER BY candidate_agent.created_at, candidate_agent.id
 			LIMIT 1
 		) AS a ON true
-		WHERE NOT recovery.reconciliation_hold
-			AND j.phase = 'accepted' AND j.desired_state = 'run'
+		WHERE j.phase = 'accepted' AND j.desired_state = 'run'
 			AND (
 				SELECT count(*) FROM jobs AS active_namespace_job
 				WHERE active_namespace_job.namespace_id = j.namespace_id

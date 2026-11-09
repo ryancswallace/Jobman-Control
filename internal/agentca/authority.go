@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/url"
 	"os"
@@ -54,16 +55,9 @@ func Load(certificateFile, keyFile string) (*Authority, error) {
 // Parse constructs an authority from PEM data. It is primarily useful for
 // deterministic tests and embedded deployments.
 func Parse(certificatePEM, keyPEM []byte, now func() time.Time) (*Authority, error) {
-	certificateBlock, rest := pem.Decode(certificatePEM)
-	if certificateBlock == nil || certificateBlock.Type != "CERTIFICATE" || len(rest) != 0 {
-		return nil, errors.New("agent CA certificate must contain exactly one PEM certificate")
-	}
-	certificate, err := x509.ParseCertificate(certificateBlock.Bytes)
+	certificate, err := parseCA(certificatePEM)
 	if err != nil {
-		return nil, fmt.Errorf("parse agent CA certificate: %w", err)
-	}
-	if !certificate.IsCA || certificate.KeyUsage&x509.KeyUsageCertSign == 0 {
-		return nil, errors.New("agent CA certificate is not authorized to sign certificates")
+		return nil, err
 	}
 	keyBlock, rest := pem.Decode(keyPEM)
 	if keyBlock == nil || len(rest) != 0 {
@@ -84,6 +78,21 @@ func Parse(certificatePEM, keyPEM []byte, now func() time.Time) (*Authority, err
 		certificate: certificate, privateKey: privateKey,
 		certificatePEM: append([]byte(nil), certificatePEM...), now: now,
 	}, nil
+}
+
+func parseCA(data []byte) (*x509.Certificate, error) {
+	block, rest := pem.Decode(bytes.TrimSpace(data))
+	if block == nil || block.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 {
+		return nil, errors.New("agent CA certificate must contain exactly one PEM certificate")
+	}
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse agent CA certificate: %w", err)
+	}
+	if !certificate.IsCA || certificate.KeyUsage&x509.KeyUsageCertSign == 0 {
+		return nil, errors.New("agent CA certificate is not authorized to sign certificates")
+	}
+	return certificate, nil
 }
 
 // Issue validates a PKCS #10 CSR and returns a short-lived client certificate
@@ -154,6 +163,39 @@ func (authority *Authority) CertificatePool() *x509.CertPool {
 	pool.AddCert(authority.certificate)
 
 	return pool
+}
+
+// TrustPool adds one public verification root for an intentional CA overlap.
+// The overlap root is never used to sign credentials.
+func (authority *Authority) TrustPool(overlapFile string) (*x509.CertPool, error) {
+	pool := authority.CertificatePool()
+	if overlapFile == "" {
+		return pool, nil
+	}
+	info, err := os.Lstat(overlapFile)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("agent overlap CA must be a regular certificate file")
+	}
+	file, err := os.Open(overlapFile)
+	if err != nil {
+		return nil, errors.New("cannot open agent overlap CA")
+	}
+	defer file.Close()
+	const maximumBytes = 16 * 1024
+	data, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
+	if err != nil || len(data) > maximumBytes {
+		return nil, errors.New("agent overlap CA is unreadable or too large")
+	}
+	certificate, err := parseCA(data)
+	if err != nil {
+		return nil, fmt.Errorf("invalid agent overlap CA: %w", err)
+	}
+	now := authority.now()
+	if certificate.Equal(authority.certificate) || now.Before(certificate.NotBefore) || !now.Before(certificate.NotAfter) {
+		return nil, errors.New("agent overlap CA must be distinct and currently valid")
+	}
+	pool.AddCert(certificate)
+	return pool, nil
 }
 
 // AgentID returns the agent identity encoded in a verified client certificate.

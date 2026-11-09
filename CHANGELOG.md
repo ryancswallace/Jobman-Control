@@ -5,6 +5,19 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- Run forward-only migrations separately from the service and administer an
+  audited PostgreSQL restore hold with a dedicated operator login.
+- Export bounded lifecycle outbox batches and acknowledge durable receipts
+  with restore fencing, independent backlog metrics and example alerts.
+- Support one additional agent trust root for a planned CA rollover and
+  auditable retirement of an exact agent and target generation.
+
+### Fixed
+
+- Fence assignment transactions against concurrent restore-hold changes.
+
 ## [0.3.1] - 2026-11-08
 
 ### Fixed

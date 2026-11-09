@@ -287,7 +287,7 @@ func (store *Store) OperationalSnapshot(ctx context.Context) (domain.Operational
 	if err != nil {
 		return domain.OperationalSnapshot{}, fmt.Errorf("iterate agent metrics: %w", err)
 	}
-	var queueAgeSeconds, monitoringBacklogAge, monitoringRetainedAge, monitoringRetention float64
+	var queueAgeSeconds, lifecycleBacklogAge, monitoringBacklogAge, monitoringRetainedAge, monitoringRetention float64
 	if err = store.pool.QueryRow(ctx, `
 		SELECT
 			(SELECT count(*) FROM outbox WHERE published_at IS NULL),
@@ -297,16 +297,20 @@ func (store *Store) OperationalSnapshot(ctx context.Context) (domain.Operational
 			reconciliation_hold, restore_epoch,
  (SELECT count(*) FROM outbox WHERE topic='monitoring.job_terminal.v1' AND published_at IS NULL),
  COALESCE((SELECT GREATEST(0,EXTRACT(EPOCH FROM statement_timestamp()-min(created_at))) FROM outbox WHERE topic='monitoring.job_terminal.v1' AND published_at IS NULL),0),
+ COALESCE((SELECT GREATEST(0,EXTRACT(EPOCH FROM statement_timestamp()-created_at)) FROM outbox WHERE topic<>'monitoring.job_terminal.v1' AND published_at IS NULL ORDER BY created_at, id LIMIT 1),0),
  COALESCE((SELECT GREATEST(0,EXTRACT(EPOCH FROM statement_timestamp()-published_at)) FROM monitoring_feed ORDER BY position LIMIT 1),0),
  (SELECT retention_seconds FROM monitoring_feed_state WHERE singleton)
 		FROM service_recovery_state
 	`).Scan(
 		&snapshot.UnpublishedOutbox, &snapshot.StaleExecutions, &queueAgeSeconds,
-		&snapshot.RecoveryHold, &snapshot.RestoreEpoch, &snapshot.MonitoringBacklog, &monitoringBacklogAge, &monitoringRetainedAge, &monitoringRetention,
+		&snapshot.RecoveryHold, &snapshot.RestoreEpoch, &snapshot.MonitoringBacklog, &monitoringBacklogAge,
+		&lifecycleBacklogAge, &monitoringRetainedAge, &monitoringRetention,
 	); err != nil {
 		return domain.OperationalSnapshot{}, fmt.Errorf("read operational metrics: %w", err)
 	}
 	snapshot.OldestQueueAge = time.Duration(queueAgeSeconds * float64(time.Second))
+	snapshot.LifecycleBacklog = snapshot.UnpublishedOutbox - snapshot.MonitoringBacklog
+	snapshot.OldestLifecycleBacklogAge = time.Duration(lifecycleBacklogAge * float64(time.Second))
 	snapshot.OldestMonitoringBacklogAge = time.Duration(monitoringBacklogAge * float64(time.Second))
 	snapshot.OldestRetainedMonitoringAge = time.Duration(monitoringRetainedAge * float64(time.Second))
 	snapshot.MonitoringRetention = time.Duration(monitoringRetention * float64(time.Second))

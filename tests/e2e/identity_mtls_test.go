@@ -31,6 +31,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ryancswallace/jobman-control/internal/agentca"
 	"github.com/ryancswallace/jobman-control/internal/app"
 )
 
@@ -58,30 +59,17 @@ func TestOIDCClientAndMTLSAgent(t *testing.T) {
 	agentCA := newTestCA(t, "Jobman Control test agent CA")
 	agentCACertificateFile := writePrivateFile(t, temporaryDirectory, "agent-ca.crt", agentCA.certificatePEM)
 	agentCAKeyFile := writePrivateFile(t, temporaryDirectory, "agent-ca.key", agentCA.privateKeyPEM)
+	replacementCA := newTestCA(t, "Jobman Control replacement agent CA")
+	replacementCertificate := writePrivateFile(t, temporaryDirectory, "replacement-ca.crt", replacementCA.certificatePEM)
+	replacementKey := writePrivateFile(t, temporaryDirectory, "replacement-ca.key", replacementCA.privateKeyPEM)
 
 	listenAddress := availableLoopbackAddress(ctx, t)
 	setServiceEnvironment(
 		t, databaseURL, listenAddress, issuer,
 		serviceCertificateFile, serviceKeyFile, agentCACertificateFile, agentCAKeyFile,
 	)
-
-	serviceContext, stopService := context.WithCancel(ctx)
-	service := &serviceProcess{done: make(chan struct{})}
-	go func() {
-		defer close(service.done)
-		service.err = app.Run(serviceContext, slog.New(slog.DiscardHandler))
-	}()
-	t.Cleanup(func() {
-		stopService()
-		select {
-		case <-service.done:
-			if service.err != nil {
-				t.Errorf("Jobman Control shutdown error = %v", service.err)
-			}
-		case <-time.After(10 * time.Second):
-			t.Error("Jobman Control did not stop within 10 seconds")
-		}
-	})
+	t.Setenv("JOBMAN_CONTROL_AGENT_OVERLAP_CA_FILE", replacementCertificate)
+	service := startControlFixture(ctx, t)
 
 	serviceRoots := x509.NewCertPool()
 	if !serviceRoots.AppendCertsFromPEM(serviceCA.certificatePEM) {
@@ -124,6 +112,65 @@ func TestOIDCClientAndMTLSAgent(t *testing.T) {
 	if assignmentList.Kind != "AgentAssignmentList" {
 		t.Fatalf("agent assignment response kind = %q", assignmentList.Kind)
 	}
+
+	replacementAddress := availableLoopbackAddress(ctx, t)
+	setServiceEnvironment(
+		t, databaseURL, replacementAddress, issuer, serviceCertificateFile, serviceKeyFile,
+		replacementCertificate, replacementKey,
+	)
+	t.Setenv("JOBMAN_CONTROL_AGENT_OVERLAP_CA_FILE", agentCACertificateFile)
+	replacement := startControlFixture(ctx, t)
+	replacementURL := "https://" + replacementAddress
+	waitForReadiness(ctx, t, client, replacementURL, replacement)
+	rotated := renewTestCertificate(ctx, t, agentClient, replacementURL)
+	originalLeaf := parseTestLeaf(t, agentCertificate)
+	rotatedLeaf := parseTestLeaf(t, rotated)
+	oldID, oldErr := agentca.AgentID(originalLeaf)
+	newID, newErr := agentca.AgentID(rotatedLeaf)
+	if oldErr != nil || newErr != nil || oldID != newID ||
+		rotatedLeaf.CheckSignatureFrom(replacementCA.certificate) != nil ||
+		originalLeaf.CheckSignatureFrom(agentCA.certificate) != nil ||
+		bytes.Equal(originalLeaf.RawSubjectPublicKeyInfo, rotatedLeaf.RawSubjectPublicKeyInfo) {
+		t.Fatal("CA rollover changed the enrolled identity or reused its key")
+	}
+	rotatedClient := newTLSClient(serviceRoots, rotated)
+	t.Cleanup(rotatedClient.CloseIdleConnections)
+	for _, replicaURL := range []string{serviceURL, replacementURL} {
+		route := replicaURL + "/v1/agent/assignments"
+		if result := requestJSON(ctx, t, rotatedClient, http.MethodGet, route, "", "", nil); result.status != http.StatusOK {
+			t.Fatalf("replica rejected rotated credential: %d", result.status)
+		}
+		if result := requestJSON(ctx, t, agentClient, http.MethodGet, route, "", "", nil); result.status != http.StatusUnauthorized {
+			t.Fatalf("replica accepted superseded credential: %d", result.status)
+		}
+	}
+
+	finalAddress := availableLoopbackAddress(ctx, t)
+	t.Setenv("JOBMAN_CONTROL_LISTEN", finalAddress)
+	t.Setenv("JOBMAN_CONTROL_AGENT_OVERLAP_CA_FILE", "")
+	finalReplica := startControlFixture(ctx, t)
+	finalURL := "https://" + finalAddress
+	waitForReadiness(ctx, t, client, finalURL, finalReplica)
+	if result := requestJSON(ctx, t, rotatedClient, http.MethodGet, finalURL+"/v1/agent/assignments", "", "", nil); result.status != http.StatusOK {
+		t.Fatalf("new-only replica rejected rotated credential: %d", result.status)
+	}
+	forcedOld := newTLSClient(serviceRoots)
+	defer forcedOld.CloseIdleConnections()
+	transport, ok := forcedOld.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("fixture client has no TLS transport")
+	}
+	transport.TLSClientConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		return &agentCertificate, nil
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, finalURL+"/v1/agent/assignments", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response, requestErr := forcedOld.Do(request); requestErr == nil {
+		_ = response.Body.Close()
+		t.Fatal("new-only replica accepted the old trust root at TLS")
+	}
 }
 
 type targetIdentity struct {
@@ -133,6 +180,66 @@ type targetIdentity struct {
 type serviceProcess struct {
 	done chan struct{}
 	err  error
+}
+
+func startControlFixture(ctx context.Context, t *testing.T) *serviceProcess {
+	t.Helper()
+	serviceContext, stopService := context.WithCancel(ctx)
+	service := &serviceProcess{done: make(chan struct{})}
+	go func() {
+		defer close(service.done)
+		service.err = app.Run(serviceContext, slog.New(slog.DiscardHandler))
+	}()
+	t.Cleanup(func() {
+		stopService()
+		select {
+		case <-service.done:
+			if service.err != nil {
+				t.Errorf("Jobman Control shutdown error = %v", service.err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Error("Jobman Control did not stop within 10 seconds")
+		}
+	})
+	return service
+}
+
+func renewTestCertificate(ctx context.Context, t *testing.T, client *http.Client, origin string) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: request})
+	result := requestJSON(ctx, t, client, http.MethodPost, origin+"/v1/agent/certificate/renew", "", "", map[string]any{
+		"apiVersion": controlAPIVersion, "kind": "AgentCertificateRenewal",
+		"spec": map[string]string{"certificateSigningRequest": string(csr)},
+	})
+	if result.status != http.StatusOK {
+		t.Fatalf("certificate renewal status = %d", result.status)
+	}
+	var document struct {
+		CertificatePEM string `json:"certificatePem"`
+	}
+	decodeResponse(t, result.body, &document)
+	certificate, err := tls.X509KeyPair([]byte(document.CertificatePEM), marshalPrivateKey(t, key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return certificate
+}
+
+func parseTestLeaf(t *testing.T, keyPair tls.Certificate) *x509.Certificate {
+	t.Helper()
+	cert, err := x509.ParseCertificate(keyPair.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert
 }
 
 func createTarget(

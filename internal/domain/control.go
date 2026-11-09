@@ -385,6 +385,8 @@ type OperationalSnapshot struct {
 	JobsByPhase                 map[string]int64
 	AgentsByStatus              map[string]int64
 	UnpublishedOutbox           int64
+	LifecycleBacklog            int64
+	OldestLifecycleBacklogAge   time.Duration
 	MonitoringBacklog           int64
 	OldestMonitoringBacklogAge  time.Duration
 	OldestRetainedMonitoringAge time.Duration
@@ -397,10 +399,10 @@ type OperationalSnapshot struct {
 
 // RecoveryState controls conservative assignment after a database restore.
 type RecoveryState struct {
-	Hold         bool
-	RestoreEpoch int64
-	Reason       string
-	UpdatedAt    time.Time
+	Hold         bool      `json:"hold"`
+	RestoreEpoch int64     `json:"restoreEpoch"`
+	Reason       string    `json:"changeReference,omitempty"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 // ControlRepository is the complete persistence boundary used by this slice.

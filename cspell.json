@@ -25,6 +25,11 @@
     "/\\b[0-9a-f]{32,}\\b/g"
   ],
   "words": [
+    "alertname",
+    "cutover",
+    "dbname",
+    "promtool",
+    "ROWTYPE",
     "labfixture",
     "PKIX",
 	"LDAPS",

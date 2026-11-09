@@ -346,10 +346,11 @@ func (store *Store) RecordAgentCertificate(
 		INSERT INTO agent_certificates (
 			serial, namespace_id, agent_id, public_key_digest, not_after
 		)
-		SELECT $2, namespace_id, id, $3, $4
-		FROM agents
-		WHERE id = $1 AND status = 'active'
-        AND NOT EXISTS (SELECT 1 FROM agent_recoveries r WHERE r.agent_id=agents.id)
+		SELECT $2, a.namespace_id, a.id, $3, $4
+		FROM agents AS a JOIN targets AS t ON t.id = a.target_id
+		WHERE a.id = $1 AND a.status = 'active' AND t.state = 'active'
+			AND t.current_generation_id = a.target_generation_id
+			AND NOT EXISTS (SELECT 1 FROM agent_recoveries r WHERE r.agent_id = a.id)
 		ON CONFLICT (serial) DO UPDATE
 		SET serial = EXCLUDED.serial
 		WHERE agent_certificates.agent_id = EXCLUDED.agent_id
@@ -376,23 +377,30 @@ func (store *Store) RotateAgentCertificate(
 	certificate domain.AgentCertificate,
 ) error {
 	_, err := inTransaction(ctx, store.pool, func(tx pgx.Tx) (struct{}, error) {
+		if err := lockAgentCredentialOwner(ctx, tx, identity.AgentID); err != nil {
+			return struct{}{}, err
+		}
 		commandTag, queryErr := tx.Exec(ctx, `
 			INSERT INTO agent_certificates (
 				serial, namespace_id, agent_id, public_key_digest, not_after
-			) VALUES ($1, $2, $3, $4, $5)
+			)
+			SELECT $1, a.namespace_id, a.id, $4, $5
+			FROM agents AS a JOIN targets AS t ON t.id = a.target_id
+			WHERE a.namespace_id = $2 AND a.id = $3 AND a.target_generation_id = $6
+				AND t.state IN ('active', 'draining')
 		`, certificate.Serial, identity.NamespaceID, identity.AgentID,
-			certificate.PublicKeyDigest, certificate.ExpiresAt)
+			certificate.PublicKeyDigest, certificate.ExpiresAt, identity.TargetGenerationID)
 		if queryErr != nil {
 			return struct{}{}, fmt.Errorf("insert rotated agent certificate: %w", queryErr)
 		}
 		if commandTag.RowsAffected() != 1 {
-			return struct{}{}, domain.ErrConflict
+			return struct{}{}, domain.ErrUnauthenticated
 		}
 		commandTag, queryErr = tx.Exec(ctx, `
 			UPDATE agent_certificates
-			SET revoked_at = transaction_timestamp(), replaced_by_serial = $3
+			SET revoked_at = clock_timestamp(), replaced_by_serial = $3
 			WHERE serial = $1 AND agent_id = $2 AND revoked_at IS NULL
-				AND not_after > transaction_timestamp()
+				AND not_after > clock_timestamp()
 		`, identity.CertificateSerial, identity.AgentID, certificate.Serial)
 		if queryErr != nil {
 			return struct{}{}, fmt.Errorf("revoke replaced agent certificate: %w", queryErr)
@@ -418,14 +426,18 @@ func (store *Store) AuthenticateAgentCertificate(
 	serial string,
 	publicKeyDigest string,
 ) (domain.AgentIdentity, error) {
-	var identity domain.AgentIdentity
-	err := store.pool.QueryRow(ctx, `
+	return inTransaction(ctx, store.pool, func(tx pgx.Tx) (domain.AgentIdentity, error) {
+		if err := lockAgentCredentialOwner(ctx, tx, agentID); err != nil {
+			return domain.AgentIdentity{}, err
+		}
+		var identity domain.AgentIdentity
+		err := tx.QueryRow(ctx, `
 		UPDATE agents AS a
-		SET updated_at = transaction_timestamp(), last_seen_at = transaction_timestamp()
+		SET updated_at = clock_timestamp(), last_seen_at = clock_timestamp()
 		FROM agent_certificates AS c, targets AS t, namespaces AS n
 		WHERE a.id = $1 AND c.serial = $2 AND c.public_key_digest = $3
 			AND c.agent_id = a.id AND c.namespace_id = a.namespace_id
-			AND c.revoked_at IS NULL AND c.not_after > transaction_timestamp()
+			AND c.revoked_at IS NULL AND c.not_after > clock_timestamp()
 			AND a.status IN ('active', 'draining') AND t.id = a.target_id
 			AND t.state IN ('active', 'draining')
 			AND n.id = a.namespace_id
@@ -433,18 +445,33 @@ func (store *Store) AuthenticateAgentCertificate(
 			a.principal_id::text, a.target_id::text,
 			a.target_generation_id::text, c.serial
 	`, agentID, serial, publicKeyDigest).Scan(
-		&identity.AgentID, &identity.NamespaceID, &identity.Namespace,
-		&identity.PrincipalID, &identity.TargetID,
-		&identity.TargetGenerationID, &identity.CertificateSerial,
-	)
+			&identity.AgentID, &identity.NamespaceID, &identity.Namespace,
+			&identity.PrincipalID, &identity.TargetID,
+			&identity.TargetGenerationID, &identity.CertificateSerial,
+		)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.AgentIdentity{}, domain.ErrUnauthenticated
+		}
+		if err != nil {
+			return domain.AgentIdentity{}, fmt.Errorf("authenticate agent certificate: %w", err)
+		}
+
+		return identity, nil
+	})
+}
+
+func lockAgentCredentialOwner(ctx context.Context, tx pgx.Tx, agentID string) error {
+	var locked string
+	err := tx.QueryRow(ctx, `
+		SELECT id FROM agents WHERE id = $1 AND status IN ('active', 'draining') FOR NO KEY UPDATE
+	`, agentID).Scan(&locked)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.AgentIdentity{}, domain.ErrUnauthenticated
+		return domain.ErrUnauthenticated
 	}
 	if err != nil {
-		return domain.AgentIdentity{}, fmt.Errorf("authenticate agent certificate: %w", err)
+		return fmt.Errorf("lock agent credential owner: %w", err)
 	}
-
-	return identity, nil
+	return nil
 }
 
 // ListAssignments redelivers inert offers and records delivery evidence.
@@ -571,12 +598,15 @@ func (store *Store) replayEnrollment(
 		SELECT a.registration_digest, s.id::text, s.expires_at
 		FROM agents AS a
 		JOIN agent_sessions AS s ON s.agent_id = a.id
-		WHERE a.id = $1 AND s.revoked_at IS NULL
+		JOIN targets AS t ON t.id = a.target_id
+		WHERE a.id = $1 AND a.status = 'active' AND s.revoked_at IS NULL
+			AND t.state = 'active' AND t.current_generation_id = a.target_generation_id
+			AND a.target_generation_id = $2
 			AND NOT EXISTS (SELECT 1 FROM agent_recoveries r WHERE r.agent_id=a.id)
-			AND s.expires_at > transaction_timestamp()
+			AND s.expires_at > clock_timestamp()
 		ORDER BY s.created_at DESC
-		LIMIT 1
-	`, binding.usedAgentID).Scan(&persistedDigest, &sessionID, &expiresAt)
+		LIMIT 1 FOR SHARE OF a, s, t
+	`, binding.usedAgentID, binding.generationID).Scan(&persistedDigest, &sessionID, &expiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.AgentSession{}, domain.ErrConflict
 	}
@@ -585,6 +615,13 @@ func (store *Store) replayEnrollment(
 	}
 	if persistedDigest != registrationDigest {
 		return domain.AgentSession{}, domain.ErrIdempotencyConflict
+	}
+	var current bool
+	if err = tx.QueryRow(ctx, "SELECT expires_at > clock_timestamp() FROM agent_sessions WHERE id = $1", sessionID).Scan(&current); err != nil {
+		return domain.AgentSession{}, fmt.Errorf("recheck replayed enrollment session: %w", err)
+	}
+	if !current {
+		return domain.AgentSession{}, domain.ErrConflict
 	}
 
 	return domain.AgentSession{
