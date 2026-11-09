@@ -74,6 +74,10 @@ for archive in \
     echo "$(basename "${archive}") does not contain jobman-control" >&2
     exit 1
   }
+  tar -xOzf "${archive}" THIRD_PARTY_NOTICES.md | cmp - THIRD_PARTY_NOTICES.md || {
+    echo "$(basename "${archive}") does not contain the current third-party notices" >&2
+    exit 1
+  }
 done
 for archive in \
   "${dist}/jobman-control_${version}_windows_386.zip" \
@@ -81,6 +85,10 @@ for archive in \
   "${dist}/jobman-control_${version}_windows_arm64.zip"; do
   unzip -Z1 "${archive}" | grep -Fxq jobman-control.exe || {
     echo "$(basename "${archive}") does not contain jobman-control.exe" >&2
+    exit 1
+  }
+  unzip -p "${archive}" THIRD_PARTY_NOTICES.md | cmp - THIRD_PARTY_NOTICES.md || {
+    echo "$(basename "${archive}") does not contain the current third-party notices" >&2
     exit 1
   }
 done

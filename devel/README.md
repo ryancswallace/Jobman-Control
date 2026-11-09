@@ -14,6 +14,9 @@ service:
 - `prepare-release-changelog.sh` renders a tag-aware changelog for release
   archives without modifying the tracked source.
 - `check-release.sh` verifies archives, native packages, checksums, and SBOMs.
+- `make gen-notices` uses Python 3 and the pinned Go toolchain to refresh
+  `THIRD_PARTY_NOTICES.md` after dependency changes. `make notices-check`
+  verifies the result before packaging.
 - `package-smoke.sh` installs snapshot packages in pinned target
   distributions.
 - `publish-cloudsmith-packages.sh` verifies and publishes already-public native
