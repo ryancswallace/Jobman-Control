@@ -5,6 +5,16 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [Unreleased]
 
+### Fixed
+
+- Reconcile release metadata for the operations update and its third-party
+  notices.
+
+## [0.4.0] - 2026-11-08
+
+The source tag records these changes. The artifact workflow stopped during
+metadata validation before a release was published.
+
 ### Added
 
 - Run forward-only migrations separately from the service and administer an
@@ -206,7 +216,8 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
   pre-v1. Replicas must run the same version, migrations are forward-only, and
   rollback across a migration requires the matching database backup and binary.
 
-[Unreleased]: https://github.com/ryancswallace/jobman-control/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/ryancswallace/jobman-control/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ryancswallace/jobman-control/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/ryancswallace/jobman-control/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ryancswallace/jobman-control/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/ryancswallace/jobman-control/compare/v0.2.0...v0.2.1

@@ -206,6 +206,12 @@ identifies current `main` and the release is missing or remains a draft. This
 is the v0.1.0 bootstrap path and can also recover an interruption before a
 complete draft was staged.
 
+Before creating a stable tag for this path, add its dated changelog heading
+and canonical comparison links. Run
+`make release-metadata-check RELEASE_TAG=vMAJOR.MINOR.PATCH` with the actual
+tag value before pushing. The source validation checks every reachable stable
+tag's metadata and compares its date with the tagged commit.
+
 Use **Publish staged release** only when the complete draft already contains the
 signed checksum manifest, all checksummed assets, SLSA provenance, and the
 immutable image. That workflow never rebuilds or replaces artifacts. It
