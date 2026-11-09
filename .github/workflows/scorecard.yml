@@ -6,6 +6,7 @@ on:
     branches: [main]
   schedule:
     - cron: "41 3 * * 6"
+  workflow_dispatch:
 
 permissions: read-all
 
@@ -16,6 +17,7 @@ concurrency:
 jobs:
   analysis:
     name: Analyze supply-chain security
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
