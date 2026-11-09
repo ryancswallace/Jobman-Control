@@ -712,14 +712,14 @@ func TestGraphsAndProductionControlsIntegration(t *testing.T) {
 	if err != nil || len(audit.Items) == 0 {
 		t.Fatalf("ExportAudit() = %#v, %v", audit, err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE service_recovery_state SET reconciliation_hold = true, reason = 'restore test'`); err != nil {
+	if _, err = SetRecovery(ctx, pool, 1, 2, true, "restore-test"); err != nil {
 		t.Fatal(err)
 	}
 	if count, reconcileErr := store.ReconcileAssignments(ctx, 10); reconcileErr != nil || count != 0 {
 		t.Fatalf("held ReconcileAssignments() = %d, %v", count, reconcileErr)
 	}
 	snapshot, err := store.OperationalSnapshot(ctx)
-	if err != nil || !snapshot.RecoveryHold || snapshot.RestoreEpoch != 1 || snapshot.JobsByPhase["terminal"] != 4 {
+	if err != nil || !snapshot.RecoveryHold || snapshot.RestoreEpoch != 2 || snapshot.JobsByPhase["terminal"] != 4 {
 		t.Fatalf("OperationalSnapshot() = %#v, %v", snapshot, err)
 	}
 	if _, err = pool.Exec(ctx, `

@@ -11,7 +11,7 @@ func TestLoadMigrationsIsOrderedAndChecksummed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations() error = %v", err)
 	}
-	if len(migrations) != 23 || migrations[0].version != "000001_control_foundation.sql" ||
+	if len(migrations) != 26 || migrations[0].version != "000001_control_foundation.sql" ||
 		migrations[1].version != "000002_targets_agents_assignments.sql" ||
 		migrations[2].version != "000003_agent_execution.sql" ||
 		migrations[3].version != "000004_shared_logs.sql" ||
@@ -30,7 +30,10 @@ func TestLoadMigrationsIsOrderedAndChecksummed(t *testing.T) {
 		migrations[16].version != "000017_directory_reconciliation.sql" ||
 		migrations[17].version != "000018_bounded_manifests.sql" ||
 		migrations[18].version != "000019_target_catalog.sql" ||
-		migrations[19].version != "000020_diagnostic_snapshots.sql" || migrations[20].version != "000021_monitoring_events.sql" || migrations[21].version != "000022_monitoring_visibility_fences.sql" || migrations[22].version != "000023_agent_recovery.sql" {
+		migrations[19].version != "000020_diagnostic_snapshots.sql" || migrations[20].version != "000021_monitoring_events.sql" || migrations[21].version != "000022_monitoring_visibility_fences.sql" || migrations[22].version != "000023_agent_recovery.sql" ||
+		migrations[23].version != "000024_recovery_operator.sql" ||
+		migrations[24].version != "000025_lifecycle_export.sql" ||
+		migrations[25].version != "000026_agent_offboarding.sql" {
 		t.Fatalf("loadMigrations() returned unexpected migration sequence (length %d)", len(migrations))
 	}
 	for _, item := range migrations {

@@ -36,6 +36,7 @@ var fileFields = map[string]string{ // #nosec G101 -- Configuration field names,
 	"tlsKeyFile":               "TLS_KEY_FILE",
 	"agentCACertificateFile":   "AGENT_CA_CERT_FILE",
 	"agentCAKeyFile":           "AGENT_CA_KEY_FILE",
+	"agentOverlapCAFile":       "AGENT_OVERLAP_CA_FILE",
 	"agentStaleAfter":          "AGENT_STALE_AFTER",
 	"migrateOnStart":           "MIGRATE_ON_START",
 	"directoryConfigFile":      "DIRECTORY_CONFIG_FILE",
@@ -181,6 +182,16 @@ func readSecret(path string) (string, error) {
 	value := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
 	if value == "" || strings.ContainsAny(value, "\x00\r\n") {
 		return "", errors.New("credential must be one nonempty line")
+	}
+	return value, nil
+}
+
+// ReadDatabaseURLFile reads a dedicated operator credential without loading
+// the service configuration or including the credential in error output.
+func ReadDatabaseURLFile(path string) (string, error) {
+	value, err := readSecret(path)
+	if err != nil || (!strings.HasPrefix(value, "postgresql://") && !strings.HasPrefix(value, "postgres://")) {
+		return "", errors.New("database URL file must contain a protected PostgreSQL URI")
 	}
 	return value, nil
 }

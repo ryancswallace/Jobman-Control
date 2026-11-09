@@ -92,12 +92,17 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		return retentionErr
 	}
 	var certificateAuthority *agentca.Authority
+	var agentClientRoots *x509.CertPool
 	if configuration.AgentCACertificateFile != "" {
 		certificateAuthority, err = agentca.Load(
 			configuration.AgentCACertificateFile, configuration.AgentCAKeyFile,
 		)
 		if err != nil {
 			return fmt.Errorf("load agent certificate authority: %w", err)
+		}
+		agentClientRoots, err = certificateAuthority.TrustPool(configuration.AgentOverlapCAFile)
+		if err != nil {
+			return err
 		}
 	}
 	clientAuthenticator, err := configureAuthentication(startupContext, store, configuration)
@@ -134,6 +139,7 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 		AgentSessionLifetime:     configuration.AgentSessionLifetime,
 		AgentCertificateLifetime: configuration.AgentCertificateLifetime,
 		CertificateAuthority:     certificateAuthority,
+		AgentClientRoots:         agentClientRoots,
 		Logger:                   logger,
 	})
 	if err != nil {
@@ -148,7 +154,7 @@ func run(ctx context.Context, logger *slog.Logger, configuration config.Config) 
 	tlsConfiguration := &tls.Config{MinVersion: tls.VersionTLS12}
 	if certificateAuthority != nil {
 		tlsConfiguration.ClientAuth = tls.VerifyClientCertIfGiven
-		tlsConfiguration.ClientCAs = certificateAuthority.CertificatePool()
+		tlsConfiguration.ClientCAs = agentClientRoots.Clone()
 	}
 	if len(delegationCA) > 0 {
 		if tlsConfiguration.ClientCAs == nil {

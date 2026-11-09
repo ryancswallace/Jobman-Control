@@ -4,6 +4,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -38,6 +39,7 @@ type Options struct {
 	AgentSessionLifetime     time.Duration
 	AgentCertificateLifetime time.Duration
 	CertificateAuthority     *agentca.Authority
+	AgentClientRoots         *x509.CertPool
 	Logger                   *slog.Logger
 }
 
@@ -52,6 +54,7 @@ type api struct {
 	agentSessionLifetime     time.Duration
 	agentCertificateLifetime time.Duration
 	certificateAuthority     *agentca.Authority
+	agentClientRoots         *x509.CertPool
 }
 
 // New returns the complete first-slice HTTP handler.
@@ -89,6 +92,7 @@ func New(options Options) (http.Handler, error) {
 		agentSessionLifetime:     options.AgentSessionLifetime,
 		agentCertificateLifetime: options.AgentCertificateLifetime,
 		certificateAuthority:     options.CertificateAuthority,
+		agentClientRoots:         options.AgentClientRoots,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", serverAPI.health)
@@ -194,6 +198,8 @@ func (service *api) metrics(writer http.ResponseWriter, request *http.Request) {
 		_, _ = fmt.Fprintf(writer, "jobman_control_agents{status=%q} %d\n", status, snapshot.AgentsByStatus[status])
 	}
 	_, _ = fmt.Fprintf(writer, "jobman_control_outbox_unpublished %d\n", snapshot.UnpublishedOutbox)
+	_, _ = fmt.Fprintf(writer, "jobman_control_lifecycle_backlog %d\n", snapshot.LifecycleBacklog)
+	_, _ = fmt.Fprintf(writer, "jobman_control_lifecycle_backlog_oldest_seconds %g\n", snapshot.OldestLifecycleBacklogAge.Seconds())
 	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_backlog %d\n", snapshot.MonitoringBacklog)
 	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_backlog_oldest_seconds %g\n", snapshot.OldestMonitoringBacklogAge.Seconds())
 	_, _ = fmt.Fprintf(writer, "jobman_control_monitoring_retained_oldest_seconds %g\n", snapshot.OldestRetainedMonitoringAge.Seconds())

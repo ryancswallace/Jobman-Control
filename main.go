@@ -31,6 +31,11 @@ func execute(arguments []string, stdout, stderr io.Writer, runService serviceRun
 		defer stop()
 		return resourcesCommand(ctx, arguments[1:], stdout, stderr)
 	}
+	if len(arguments) > 0 && (arguments[0] == "migrate" || arguments[0] == "recovery") {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return operatorCommand(ctx, arguments, stdout, stderr)
+	}
 	if len(arguments) == 1 && (arguments[0] == "--version" || arguments[0] == "version") {
 		_, _ = fmt.Fprintf(stdout, "jobman-control %s\n", buildinfo.Display())
 
@@ -42,7 +47,7 @@ func execute(arguments []string, stdout, stderr io.Writer, runService serviceRun
 	check := flags.Bool("check-config", false, "validate without opening credentials or contacting services")
 	show := flags.Bool("show-config", false, "show redacted effective configuration and origins")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || ((*check || *show) && *path == "") {
-		_, _ = fmt.Fprintln(stderr, "usage: jobman-control [--version] [--config FILE [--check-config | --show-config]]")
+		_, _ = fmt.Fprintln(stderr, "usage: jobman-control [--version] [--config FILE [--check-config | --show-config]] | migrate | recovery")
 		return 2
 	}
 	if *check || *show {

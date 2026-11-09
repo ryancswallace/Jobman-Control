@@ -572,6 +572,18 @@ func (service *api) authenticateAgentCertificate(request *http.Request) (domain.
 	if err != nil {
 		return domain.AgentIdentity{}, domain.ErrUnauthenticated
 	}
+	if service.agentClientRoots != nil {
+		intermediates := x509.NewCertPool()
+		for _, peer := range request.TLS.PeerCertificates[1:] {
+			intermediates.AddCert(peer)
+		}
+		if _, err = certificate.Verify(x509.VerifyOptions{
+			Roots: service.agentClientRoots, Intermediates: intermediates,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		}); err != nil {
+			return domain.AgentIdentity{}, domain.ErrUnauthenticated
+		}
+	}
 	agentID, err := agentca.AgentID(certificate)
 	if err != nil || !domain.IsID(agentID) {
 		return domain.AgentIdentity{}, domain.ErrUnauthenticated

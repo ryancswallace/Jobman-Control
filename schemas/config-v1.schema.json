@@ -83,6 +83,10 @@
       "type": "string",
       "minLength": 1
     },
+    "agentOverlapCAFile": {
+      "type": "string",
+      "minLength": 1
+    },
     "agentStaleAfter": {
       "type": "string",
       "minLength": 1

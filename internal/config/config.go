@@ -65,6 +65,7 @@ type Config struct {
 	TLSKeyFile               string
 	AgentCACertificateFile   string
 	AgentCAKeyFile           string
+	AgentOverlapCAFile       string
 	AgentTokenKey            []byte
 	AgentSessionLifetime     time.Duration
 	AgentCertificateLifetime time.Duration
@@ -117,11 +118,15 @@ func load(lookup lookupEnvironment) (Config, error) {
 	}
 	agentCACertificateFile := strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_AGENT_CA_CERT_FILE", ""))
 	agentCAKeyFile := strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_AGENT_CA_KEY_FILE", ""))
+	agentOverlapCAFile := strings.TrimSpace(valueOrDefault(lookup, "JOBMAN_CONTROL_AGENT_OVERLAP_CA_FILE", ""))
 	if (agentCACertificateFile == "") != (agentCAKeyFile == "") {
 		return Config{}, errors.New("JOBMAN_CONTROL_AGENT_CA_CERT_FILE and JOBMAN_CONTROL_AGENT_CA_KEY_FILE must be set together")
 	}
 	if agentCACertificateFile != "" && tlsCertificateFile == "" {
 		return Config{}, errors.New("agent mTLS requires JOBMAN_CONTROL_TLS_CERT_FILE and JOBMAN_CONTROL_TLS_KEY_FILE")
+	}
+	if agentOverlapCAFile != "" && agentCACertificateFile == "" {
+		return Config{}, errors.New("agent CA overlap requires an agent signing CA")
 	}
 
 	migrateOnStart, err := boolValue(lookup, "JOBMAN_CONTROL_MIGRATE_ON_START", true)
@@ -179,6 +184,7 @@ func load(lookup lookupEnvironment) (Config, error) {
 		TLSKeyFile:               tlsKeyFile,
 		AgentCACertificateFile:   agentCACertificateFile,
 		AgentCAKeyFile:           agentCAKeyFile,
+		AgentOverlapCAFile:       agentOverlapCAFile,
 		AgentSessionLifetime:     defaultAgentSessionLifetime,
 		AgentCertificateLifetime: defaultAgentCertificateLifetime,
 		EnrollmentLifetime:       defaultEnrollmentLifetime,
