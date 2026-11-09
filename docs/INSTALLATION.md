@@ -1,8 +1,9 @@
 # Installation
 
-Jobman Control v0.1.x is evaluation software, not a stable production channel.
-Build from a reviewed source commit or install a verified GitHub release
-artifact.
+Install a verified [GitHub release artifact](https://github.com/ryancswallace/Jobman-Control/releases)
+or build from a reviewed source commit. The
+[compatibility reference](COMPATIBILITY.md) covers upgrade constraints for the
+pre-v1 API.
 
 ## Source build
 
@@ -23,8 +24,8 @@ remain external.
 
 The release pipeline publishes Linux amd64/arm64 OCI images and portable
 archives for Linux, macOS, and Windows. It also creates DEB, RPM, and APK
-packages with systemd and environment-file scaffolding. These are evaluation
-channels under the v0.1.x best-effort support policy.
+packages with a systemd unit and example environment file. See the
+[support policy](../SUPPORT.md) for the scope of release support.
 
 Always verify the release checksum bundle and GitHub attestation before
 installation. See [RELEASE.md](../RELEASE.md) and the

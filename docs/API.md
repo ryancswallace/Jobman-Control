@@ -2,7 +2,7 @@
 
 The complete current interface is
 [`api/openapi-v1alpha1.yaml`](../api/openapi-v1alpha1.yaml). The API is
-pre-release and uses `jobman.control/v1alpha1` documents plus the portable
+pre-v1 and uses `jobman.control/v1alpha1` documents plus the portable
 `jobman/v1alpha1` workload contracts.
 
 ## Authentication classes

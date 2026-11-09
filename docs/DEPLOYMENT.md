@@ -36,10 +36,10 @@ secrets into images. Offline checks defer connectivity, certificate validity and
 database migration readiness to startup. Administrative resource changes require
 a separate reviewed [plan/apply](DECLARATIVE_CONFIGURATION.md) operation.
 
-Jobman Control is pre-release and not yet recommended for production. A
-production-like deployment consists of PostgreSQL, one or more identical
-Control replicas, an HTTPS endpoint, one OIDC issuer, shared agent CA material,
-and separately deployed Jobman agents.
+A shared deployment consists of PostgreSQL, one or more identical Control
+replicas, an HTTPS endpoint, one OIDC issuer, shared agent CA material, and
+separately deployed Jobman agents. Use the
+[readiness review](PRODUCTION_READINESS.md) to plan site acceptance.
 
 Linux agents can install a hardened per-user systemd service themselves after
 enrollment. Jobman's OpenSSH bootstrap can transfer a matching Linux agent,
@@ -52,14 +52,15 @@ site policy decision and is not performed automatically.
 
 Use PostgreSQL 17.6, encrypted client connections, private networking, bounded
 connections, durable storage, automated backups, and point-in-time recovery.
-Create separate migration and runtime roles when possible. The URL is a secret
-and must not appear in unit files, image layers, logs, support bundles, or shell
+Use separate migration and runtime logins. The database URL is a secret and
+must stay out of unit files, image layers, logs, support bundles, and shell
 history.
 
-Apply migrations with one candidate binary before shifting traffic, then run
-all replicas with `JOBMAN_CONTROL_MIGRATE_ON_START=false`. Embedded migrations
-use an advisory transaction lock and are safe against concurrent attempts, but
-an explicit deployment step provides clearer privilege and failure boundaries.
+Before shifting traffic, use the selected binary's `migrate` subcommand with
+the dedicated login. Disable startup migrations with `migrateOnStart: false`
+in file mode or `JOBMAN_CONTROL_MIGRATE_ON_START=false` in environment mode.
+Follow the [migration procedure](OPERATIONS.md#migrations-and-upgrades) for
+role grants and recovery controls.
 
 ## Identity and TLS
 
@@ -77,9 +78,9 @@ deployments. Provision subsequent membership through the authorized API.
 
 Protect the online agent CA key and database backups as high-value credentials.
 Mount secrets read-only, restrict them to the service identity, and use an
-external secret manager. Rotation and emergency administrative revocation APIs
-remain future work, so document and test an operator procedure before relying
-on the service.
+external secret manager. Use the [CA rollover and offboarding
+procedure](OPERATIONS.md#agent-ca-rollover-and-offboarding) to exercise the
+selected replica and credential-delivery configuration.
 
 ## Container
 
