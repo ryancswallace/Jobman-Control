@@ -1,8 +1,9 @@
 # Installation
 
 Install a verified [GitHub release artifact](https://github.com/ryancswallace/Jobman-Control/releases)
-or build from a reviewed source commit. The released API remains pre-v1; see
-the [compatibility reference](COMPATIBILITY.md) for upgrade constraints.
+or build from a reviewed source commit. The
+[compatibility reference](COMPATIBILITY.md) covers upgrade constraints for the
+pre-v1 API.
 
 ## Source build
 
