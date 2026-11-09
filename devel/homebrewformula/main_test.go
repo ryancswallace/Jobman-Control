@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +27,10 @@ func TestRunGeneratesFormula(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"class JobmanControl", "1.2.3", strings.Repeat("a", 64), strings.Repeat("b", 64)} {
+	for _, expected := range []string{
+		fmt.Sprintf("# Release checksum manifest SHA-256: %x", sha256.Sum256([]byte(contents))),
+		"class JobmanControl", "1.2.3", strings.Repeat("a", 64), strings.Repeat("b", 64),
+	} {
 		if !bytes.Contains(formula, []byte(expected)) {
 			t.Errorf("formula does not contain %q", expected)
 		}

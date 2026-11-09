@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ var (
 
 type formulaData struct {
 	Version      string
+	ManifestHash string
 	AMD64Archive string
 	AMD64Digest  string
 	ARM64Archive string
@@ -88,7 +90,8 @@ func readFormulaData(name string) (formulaData, error) {
 	if err != nil {
 		return formulaData{}, fmt.Errorf("open checksums: %w", err)
 	}
-	scanner := bufio.NewScanner(file)
+	digest := sha256.New()
+	scanner := bufio.NewScanner(io.TeeReader(file, digest))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) != 2 || !digestRE.MatchString(fields[0]) {
@@ -109,6 +112,7 @@ func readFormulaData(name string) (formulaData, error) {
 	if data.AMD64Digest == "" || data.ARM64Digest == "" {
 		return formulaData{}, errors.New("checksum manifest is missing a macOS release archive")
 	}
+	data.ManifestHash = fmt.Sprintf("%x", digest.Sum(nil))
 
 	return data, nil
 }
@@ -116,6 +120,7 @@ func readFormulaData(name string) (formulaData, error) {
 var formulaTemplate = template.Must(template.New("formula").Parse(`# typed: strict
 # frozen_string_literal: true
 
+# Release checksum manifest SHA-256: {{ .ManifestHash }}
 class JobmanControl < Formula
   desc "Shared PostgreSQL-backed control plane for Jobman"
   homepage "https://github.com/ryancswallace/jobman-control"

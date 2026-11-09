@@ -141,6 +141,12 @@ attestations, workflow dispatch, and GHCR. It uses the following protected
 - `CLOUDSMITH_API_KEY`, restricted to publishing in the public
   `jobman/stable` repository.
 
+The Homebrew publisher uses the tap token for both the Git push and the pull
+request. The generated formula records the verified checksum manifest's
+SHA-256. Confirm publication on a run that pushes the formula branch and opens
+its pull request. If the tap already has the exact generated formula, the
+workflow exits before the push.
+
 Keep default workflow permissions read-only. The workflows grant narrowly
 scoped write permissions per job:
 

@@ -169,7 +169,7 @@ func TestHomebrewPublicationDetectsFirstFormulaAndUpdates(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			environment := []string{"PATH=" + os.Getenv("PATH"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "RELEASE_TAG=v1.2.3"}
+			environment := []string{"PATH=" + os.Getenv("PATH"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "RELEASE_TAG=v1.2.3", "GH_TOKEN=fixture"}
 			runGit := func(args ...string) string {
 				t.Helper()
 				cmd := exec.CommandContext(t.Context(), "git", args...)
