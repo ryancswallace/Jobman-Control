@@ -323,8 +323,15 @@ release-changelog: ## Render the tag-aware changelog embedded in release archive
 	./devel/prepare-release-changelog.sh $(RELEASE_CHANGELOG)
 	@test -s $(RELEASE_CHANGELOG)
 
+.PHONY: gen-notices notices-check
+gen-notices: go-version-check ## Regenerate third-party notices from the release build graph.
+	JOBMAN_NOTICE_GO="$(GO)" python3 devel/generate-notices.py
+
+notices-check: go-version-check ## Check that the packaged notices match release dependencies.
+	JOBMAN_NOTICE_GO="$(GO)" python3 devel/generate-notices.py --check
+
 .PHONY: release-check
-release-check: tool-goreleaser release-metadata-check ## Validate release configuration and metadata.
+release-check: tool-goreleaser release-metadata-check notices-check ## Validate release configuration and metadata.
 	$(GORELEASER) check
 
 .PHONY: release-build

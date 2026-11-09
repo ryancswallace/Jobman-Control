@@ -7,7 +7,7 @@ before:
   hooks:
     - go mod download
     - go mod verify
-    - make contracts-check docs-check
+    - make contracts-check docs-check notices-check
     - make release-changelog
 
 builds:
