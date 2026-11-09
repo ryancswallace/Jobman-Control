@@ -1,8 +1,8 @@
 # AGENTS.md
 
 Jobman Control is the shared control plane for Jobman. It is a Go service with
-PostgreSQL-backed state. The project is pre-release: documentation describes
-target behavior only when it says so explicitly.
+PostgreSQL-backed state. Published releases use a pre-v1 API. Identify target
+behavior and deployment acceptance explicitly in documentation.
 
 ## Boundaries
 
@@ -49,7 +49,7 @@ target behavior only when it says so explicitly.
 - `internal/auth/` and `internal/agentca/` own OIDC and agent certificate
   identity boundaries.
 - `contracts/jobman/v1alpha1/` is a mechanically copied, checksummed
-  pre-release snapshot. Never edit it directly.
+  protocol snapshot. Never edit it directly.
 - `api/` contains the authored OpenAPI contract. Keep it synchronized with
   handlers, errors, and examples.
 - `docs/`, `etc/jobman-control/`, Dockerfiles, `.goreleaser.yml`, and release

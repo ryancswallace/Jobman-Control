@@ -1,8 +1,8 @@
 # Maintenance and support policy
 
-Jobman Control is pre-release. Interfaces under `v1alpha1`, migrations,
-deployment procedures, and compatibility claims may still change. Support for
-v0.1.x evaluation releases and unreleased `main` snapshots is best effort.
+Jobman Control uses a pre-v1 API. Interfaces under `v1alpha1`, migrations,
+and deployment procedures may change between releases. Support for published
+0.x releases and unreleased `main` snapshots is best effort.
 
 Issues and pull requests should include:
 

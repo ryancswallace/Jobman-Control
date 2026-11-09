@@ -22,9 +22,8 @@ on-premises Slurm clusters, and AWS ParallelCluster deployments one place to
 submit work, enforce policy, and track results.
 
 > [!WARNING]
-> Jobman Control is pre-release evaluation software. The initial implementation
-> is ready for development and integration testing, but it has not completed
-> the department's production acceptance exercises.
+> Jobman Control publishes stable releases with a pre-v1 API. Each deployment
+> requires its own security, operations, and site acceptance.
 
 ## What it provides
 
@@ -73,7 +72,7 @@ stay in the target-approved store.
 
 ## Supported model
 
-| Layer | Supported in the initial implementation |
+| Layer | Supported model |
 | --- | --- |
 | State | PostgreSQL for shared mode; standalone Jobman continues to use local SQLite |
 | Execution | Subprocess and Slurm, performed by `jobman-agent` |
@@ -141,8 +140,8 @@ agent execution require the TLS and key-handling rules in the
 
 ## Installation
 
-Jobman Control v0.1.x is an evaluation channel. Build from a reviewed source
-commit or install a verified release artifact when one is available.
+Install a verified [published release][releases] or build from a reviewed
+source commit.
 
 | Distribution | Intended use |
 | --- | --- |
@@ -181,9 +180,9 @@ suspected vulnerabilities privately according to the [security policy].
 | Delivery semantics | Operations are idempotent and replay-safe, but external execution is not promised to be exactly once |
 | Credentials | Per-execution secret and cloud-credential brokering is not implemented |
 | Filesystems | Cross-user filesystem ownership and ACL provisioning remain an operator responsibility |
-| Recovery | Restore holds and reconciliation state exist; automated convergence proof and emergency CA rollover APIs do not |
+| Recovery | Audited restore holds block new assignment. Operators reconcile native work, coordinate CA rollover, and can retire a specific agent generation |
 | Scheduling | Namespace round-robin and FIFO dispatch are implemented; priority classes and target-weighted fairness are not |
-| Database operations | Embedded migrations are convenient for evaluation; production still needs a separately controlled least-privilege migration procedure |
+| Database operations | Run `jobman-control migrate` with a dedicated database login before starting the service with startup migrations disabled |
 
 The [production-readiness review] is the authoritative checklist. Passing CI
 does not replace deployment review or site acceptance.
@@ -229,6 +228,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
 [operations guide]: docs/OPERATIONS.md
 [production-readiness review]: docs/PRODUCTION_READINESS.md
 [release guide]: RELEASE.md
+[releases]: https://github.com/ryancswallace/Jobman-Control/releases
 [security model]: docs/SECURITY_MODEL.md
 [security policy]: SECURITY.md
 

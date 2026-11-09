@@ -2,14 +2,13 @@
 
 ## Supported versions
 
-Jobman Control v0.1.x and `main` are evaluation releases. Security fixes land
-on `main` and may be backported when practical; this best-effort policy is not
-a production support commitment.
+Security fixes land on `main` and may be backported when practical. Support
+is best effort for the published 0.x release series and unreleased snapshots.
 
 | Version | Supported |
 | --- | --- |
-| `0.1.x` | Best effort |
-| Pre-release `main` | Best effort |
+| Published `0.x` releases | Best effort |
+| Unreleased `main` | Best effort |
 
 ## Reporting a vulnerability
 

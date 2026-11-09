@@ -1,8 +1,7 @@
 # Jobman Control documentation
 
-Jobman Control v0.3.1 has a pre-v1 API. Documentation distinguishes implemented
-behavior from planned behavior; the OpenAPI document and tested code remain
-the executable contract for the current `v1alpha1` slice.
+Jobman Control releases use a pre-v1 API. The OpenAPI document and tested code
+define the current `v1alpha1` contract.
 
 - [Architecture](ARCHITECTURE.md): repository and service boundaries, data
   ownership, and request flows.
@@ -18,12 +17,10 @@ the executable contract for the current `v1alpha1` slice.
   upgrades, and incident handling.
 - [Security model](SECURITY_MODEL.md): assets, principals, trust boundaries,
   and failure policy.
-- [Production readiness](PRODUCTION_READINESS.md): initial security review,
-  implemented controls, evidence, and remaining release blockers.
+- [Production readiness](PRODUCTION_READINESS.md): implemented controls,
+  historical evidence, and site acceptance exercises.
 - [Compatibility](COMPATIBILITY.md): current platform, PostgreSQL, protocol,
   and stability matrix.
-- [Repository scaffolding](REPOSITORY_SCAFFOLDING.md): shared infrastructure
-  and intentional service-specific differences.
 
 The long-term distributed-mode design remains canonical in the Jobman
 repository's `docs/design/DISTRIBUTED_MODE.md`. This repository documents what

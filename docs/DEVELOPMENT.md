@@ -61,3 +61,7 @@ checksums, SBOMs, and local image metadata without publishing or signing.
 
 Do not commit `bin/`, `dist/`, coverage profiles, `.env` files, certificates,
 keys, database dumps, or agent credentials.
+
+The [original repository bootstrap notes](https://github.com/ryancswallace/Jobman-Control/blob/bc366cee70a0a0153436372a38adbce3f2e1c52d/docs/REPOSITORY_SCAFFOLDING.md)
+record the initial decisions about infrastructure shared with the sibling
+repositories.
