@@ -7,6 +7,15 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ## [0.4.2] - 2026-11-09
 
+### Fixed
+
+- Generate release notices from the selected Go packages, including the nested
+  go-jose JSON license, and verify notice bytes in archives and native packages.
+
+### Changed
+
+- Update go-jose to v4.1.9 and refresh release workflow dependencies.
+
 ## [0.4.1] - 2026-11-08
 
 ### Fixed
