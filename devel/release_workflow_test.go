@@ -16,7 +16,7 @@ func TestReleaseWorkflowUsesTestedMain(t *testing.T) {
 	for _, required := range []string{
 		"workflow_run:",
 		"steps.source.outputs.has_release == 'true'",
-		"cycjimmy/semantic-release-action@8be816a60e417d22b0e09b61adc23605036497eb",
+		"cycjimmy/semantic-release-action@ad51787758d9654d5a75150a89a6fa9b3ccef95e",
 		"Verify exact release-candidate workflows",
 		`"Jobman contract source"`,
 		"Generate and stage SLSA provenance",
