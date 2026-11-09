@@ -98,30 +98,25 @@ jobs:
           go run ./devel/homebrewformula -checksums "${manifest}" \
             -output generated-formula/jobman-control.rb
 
-      - name: Verify Homebrew tap token
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          permissions=$(gh api repos/ryancswallace/homebrew-tap \
-            --jq '[.permissions.push,.permissions.maintain,.permissions.admin] | any')
-          if [[ "${permissions}" != true ]]; then
-            echo "HOMEBREW_TAP_TOKEN cannot update ryancswallace/homebrew-tap." >&2
-            exit 1
-          fi
-
       - name: Checkout Homebrew tap
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ryancswallace/homebrew-tap
+          ref: main
           path: homebrew-tap
-          persist-credentials: true
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          persist-credentials: false
 
       - name: Propose verified formula
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GIT_TERMINAL_PROMPT: "0"
           RELEASE_TAG: ${{ inputs.tag }}
+        shell: bash
         run: |
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "Set HOMEBREW_TAP_TOKEN in the protected main environment." >&2
+            exit 1
+          fi
           formula=generated-formula/jobman-control.rb
           test -s "${formula}"
           grep -Fq "/releases/download/${RELEASE_TAG}/" "${formula}"
@@ -138,11 +133,15 @@ jobs:
           git switch --create "${branch}"
           git commit -m "jobman-control ${RELEASE_TAG#v}"
           remote_oid=$(git ls-remote --refs origin "refs/heads/${branch}" | awk '{print $1}')
+          push_args=(origin "HEAD:refs/heads/${branch}")
           if [[ -n "${remote_oid}" ]]; then
-            git push --force-with-lease="refs/heads/${branch}:${remote_oid}" \
-              origin "HEAD:refs/heads/${branch}"
-          else
-            git push origin "HEAD:refs/heads/${branch}"
+            push_args=(--force-with-lease="refs/heads/${branch}:${remote_oid}" "${push_args[@]}")
+          fi
+          if ! git -c credential.helper= \
+            -c 'credential.https://github.com.helper=!gh auth git-credential' \
+            -c http.https://github.com/.extraheader= push "${push_args[@]}"; then
+            echo "Check that HOMEBREW_TAP_TOKEN grants Contents read/write on the tap." >&2
+            exit 1
           fi
           pr_url=$(gh pr list --repo ryancswallace/homebrew-tap --head "${branch}" \
             --state open --json url --jq '.[0].url // empty')
