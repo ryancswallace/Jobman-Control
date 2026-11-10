@@ -52,6 +52,8 @@ archives:
     files:
       - LICENSE
       - README.md
+      - assets/logo-control.svg
+      - assets/logo-dark-control.svg
       - src: .release-generated/CHANGELOG.md
         strip_parent: true
       - CITATION.cff
@@ -91,6 +93,10 @@ nfpms:
         dst: /usr/share/licenses/jobman-control/THIRD_PARTY_NOTICES.md
       - src: README.md
         dst: /usr/share/doc/jobman-control/README.md
+      - src: assets/logo-control.svg
+        dst: /usr/share/doc/jobman-control/assets/logo-control.svg
+      - src: assets/logo-dark-control.svg
+        dst: /usr/share/doc/jobman-control/assets/logo-dark-control.svg
       - src: docs/DEPLOYMENT.md
         dst: /usr/share/doc/jobman-control/DEPLOYMENT.md
       - src: docs/OPERATIONS.md
