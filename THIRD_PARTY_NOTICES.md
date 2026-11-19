@@ -608,7 +608,7 @@ Each dependency retains its own license terms.
     OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
     WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-## github.com/jackc/pgx/v5@v5.12.0 · LICENSE
+## github.com/jackc/pgx/v5@v5.13.0 · LICENSE
 
     Copyright (c) 2013-2021 Jack Christensen
 
@@ -658,7 +658,7 @@ Each dependency retains its own license terms.
     OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
     WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-## github.com/ryancswallace/jobman@v1.9.0 · LICENSE
+## github.com/ryancswallace/jobman@v1.10.2 · LICENSE
 
     The MIT License (MIT)
 
