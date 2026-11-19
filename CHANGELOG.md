@@ -7,6 +7,9 @@ format follows [Keep a Changelog], and releases use [Semantic Versioning].
 
 ### Fixed
 
+- Build with Go 1.26.11 to address standard-library vulnerability GO-2026-6859.
+- Refresh the PostgreSQL client and Core dependency, with regenerated upstream notices.
+
 - Outline the README logo subtitle so it renders without an installed font.
 
 ## [0.4.2] - 2026-11-09

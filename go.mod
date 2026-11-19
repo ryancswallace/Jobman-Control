@@ -7,8 +7,8 @@ require (
 	github.com/go-asn1-ber/asn1-ber v1.5.8
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/go-ldap/ldap/v3 v3.4.15
-	github.com/jackc/pgx/v5 v5.12.0
-	github.com/ryancswallace/jobman v1.9.0
+	github.com/jackc/pgx/v5 v5.13.0
+	github.com/ryancswallace/jobman v1.10.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 )
 
