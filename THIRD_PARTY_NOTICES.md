@@ -682,7 +682,7 @@ Each dependency retains its own license terms.
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
 
-## go1.26.10 · LICENSE
+## go1.26.11 · LICENSE
 
     Copyright 2009 The Go Authors.
 
@@ -712,7 +712,7 @@ Each dependency retains its own license terms.
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-## go1.26.10 · PATENTS
+## go1.26.11 · PATENTS
 
     Additional IP Rights Grant (Patents)
 
