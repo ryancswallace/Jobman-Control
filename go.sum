@@ -41,8 +41,8 @@ github.com/jcmturner/rpc/v2 v2.0.3 h1:7FXXj8Ti1IaVFpSAziCZWNzbNuZmnvw/i6CqLNdWfZ
 github.com/jcmturner/rpc/v2 v2.0.3/go.mod h1:VUJYCIDm3PVOEHw8sgt091/20OJjskO/YJki3ELg/Hc=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/ryancswallace/jobman v1.10.2 h1:xmJawN4r/GBEcWWj+2I99qaP+D9YPVQbqisdYDFMxbA=
-github.com/ryancswallace/jobman v1.10.2/go.mod h1:s84K3fEdC1ee28QXMGLIekyN9aNttK7luNaapRwi4Dg=
+github.com/ryancswallace/jobman v1.10.5 h1:ZRIh6VS+cC+VSo400sEby6uT4zHqP1PacozVEDjG1GE=
+github.com/ryancswallace/jobman v1.10.5/go.mod h1:xf3sg+4GtkdG0N1y1z+CYhSSkUuP1OcbzY+aOS3tjcs=
 github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 h1:1EYB5IzjZawrrnELUi78f9fPu57HuXjmddZPjrls/28=
 github.com/santhosh-tekuri/jsonschema/v6 v6.0.3/go.mod h1:JXeL+ps8p7/KNMjDQk3TCwPpBy0wYklyWTfbkIzdIFU=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
