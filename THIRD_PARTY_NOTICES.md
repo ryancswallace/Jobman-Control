@@ -658,7 +658,7 @@ Each dependency retains its own license terms.
     OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
     WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-## github.com/ryancswallace/jobman@v1.10.2 · LICENSE
+## github.com/ryancswallace/jobman@v1.10.5 · LICENSE
 
     The MIT License (MIT)
 
